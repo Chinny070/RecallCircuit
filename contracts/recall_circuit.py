@@ -419,10 +419,12 @@ class RecallCircuit(gl.Contract):
                 raise gl.vm.UserError("invalid notice parent")
             if gl.message.sender_address != parent.submitter:
                 raise gl.vm.UserError("notice submitter only")
-        # Reject identical URLs to make repeated public submissions less useful for spam.
+        # Same URL can be re-verified as a revision by the original proposer;
+        # a new independent duplicate cannot spam the global notice set.
         for ix in range(1, int(self.next_notice)):
             if str(self._notice(u256(ix)).source_url) == source_url:
-                raise gl.vm.UserError("notice URL already registered")
+                if not int(parent_id) or ix != int(parent_id):
+                    raise gl.vm.UserError("notice URL already registered")
         nid = self.next_notice
         self.next_notice = u256(int(nid) + 1)
         n = self.notices.get_or_insert_default(nid)
@@ -441,9 +443,11 @@ class RecallCircuit(gl.Contract):
         if int(n.status) != N_PROPOSED:
             raise gl.vm.UserError("notice already verified")
         url = str(n.source_url)
-        result = gl.vm.run_nondet_unsafe(
-            lambda: independently_verify_notice(url),
-            lambda result: agree_notice(result, url))
+        def leader_fn() -> dict:
+            return independently_verify_notice(url)
+        def validator_fn(leader_result) -> bool:
+            return agree_notice(leader_result, url)
+        result = gl.vm.run_nondet_unsafe(leader_fn, validator_fn)
         info = parse_notice(result)
         if not info:
             raise gl.vm.UserError("unable to verify official notice")
@@ -512,9 +516,11 @@ class RecallCircuit(gl.Contract):
         url = str(n.source_url)
         info = normalize_asset(a)
         appeal = str(c.appeal_text) if int(c.status) == C_APPEAL else ""
-        result = gl.vm.run_nondet_unsafe(
-            lambda: independently_classify(url, info, appeal),
-            lambda leader: agree_finding(leader, url, info, appeal))
+        def leader_fn() -> dict:
+            return independently_classify(url, info, appeal)
+        def validator_fn(leader_result) -> bool:
+            return agree_finding(leader_result, url, info, appeal)
+        result = gl.vm.run_nondet_unsafe(leader_fn, validator_fn)
         result = parse_finding(result)
         if not result:
             raise gl.vm.UserError("invalid consensus decision")
@@ -576,9 +582,11 @@ class RecallCircuit(gl.Contract):
         url = str(n.source_url)
         proof = str(c.remedy_url)
         info = normalize_asset(a)
-        result = gl.vm.run_nondet_unsafe(
-            lambda: independently_check_remedy(url, proof, info),
-            lambda leader: agree_remedy(leader, url, proof, info))
+        def leader_fn() -> dict:
+            return independently_check_remedy(url, proof, info)
+        def validator_fn(leader_result) -> bool:
+            return agree_remedy(leader_result, url, proof, info)
+        result = gl.vm.run_nondet_unsafe(leader_fn, validator_fn)
         parsed = parse_finding(result)
         if parsed.get("finding") == "NOT_AFFECTED":
             c.status = u8(C_REMEDIATED)
