@@ -1,0 +1,7 @@
+{
+  "name": "recallcircuit-studionet-tooling",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": { "gl": "genlayer" },
+  "devDependencies": { "genlayer": "0.39.1" }
+}

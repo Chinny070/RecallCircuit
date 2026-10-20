@@ -1,0 +1,29 @@
+{
+  "project": "RecallCircuit",
+  "date": "2026-10-20",
+  "status": "36 simulated/static tests pass; GenVM/StudioNet unverified",
+  "files": {
+    ".github/workflows/ci.yml": "f1faf70c64437167c4b8508a1a664161f9f3371bbfef9022365b55fa0da31e0a",
+    ".gitignore": "90ad28e3f435f14e070fc2e87045a5259169e9353f81f3567f7c80bb3506bdb8",
+    "BUILD_STATUS.md": "b126ae75f56ac3187dd1a063a6f5f779b019651f8a8d0cc7fec2c5a3e1a9d8f5",
+    "CLAUDE_FINISH_PROMPT.md": "6287b1c8d251976a18cc349801491e580acebedad77df6dc9b6c684f3fef57e1",
+    "README.md": "9d3440fb5fcb81fa9a46adbc3e2102df43aa0a2c83f85696c7c75fd539be343f",
+    "contracts/recall_circuit.py": "2bb6e4cf3c6786b226c7e341c9adacda4b0e9892e2bd3bbbd494194808f043a1",
+    "contracts/recall_gate.py": "78999c05d03cec0146f3c063b4cee0db415e54bde49094fc1f9548ac2e032900",
+    "docs/STATE_MACHINE.md": "d7e99ff5bf4f5939134ea6fb4b40baec452a0028d8dbe29f7c0e62e71071b478",
+    "docs/THREAT_MODEL.md": "f9f8f56f1c68e26ac978cf12ead14b6e0733e7a881962030dcdcb3746f86e52a",
+    "frontend/.env.example": "d9e20ec979aa003e08729b2fd2e13e4a0cb31f4e7b861cf141c7b38e7fa31403",
+    "frontend/index.html": "9479053eb459fde95c8e8ad0845ca969403d50242e4f6167a213f1f7d88f694f",
+    "frontend/package.json": "16fc94852f6e2fec7f06b679fe8d1a51a381d23331ecf48090ac730288220901",
+    "frontend/src/app.js": "28f5cc47ea4266b980a15b5f6832eda600a8d9818a919a124284961547a5e5af",
+    "frontend/src/styles.css": "d286cfe23950585596bdb48eaab526ff28b632bbd3cac4b0eabeda273c40bf24",
+    "gltest.config.yaml": "6157007ce031b08a08caa85e48d89cafe4b5021b3f0b8e05b47618189bd3605b",
+    "package.json": "d41e69832365e263941ca72bfc2db7096b4f5de007db33524f197c24f34e0540",
+    "requirements-dev.txt": "693d97bdd0fb5283060c3efadf25a90d0c3b59be09b25fac59f5f1c68a1f993b",
+    "scripts/check_rpc.py": "1f3c17de585366c4da7f045a1e69dc16efd70f3e4932594a2ff8f4a7ef7353c7",
+    "tests/conftest.py": "f73f34da4a52f273b2556bd300a07b1d0250cf90bc6bfb89b48cd885bc33d176",
+    "tests/direct/test_recallcircuit_direct.py": "f177665404349807c47eddf22674511b7392ee58536595dc76ed240c5f5c8fa7",
+    "tests/test_protocol.py": "92f1a3ac7a88c3be2d85985d1e4e1d915614de905cb3e1f9af05edd2363c81e1",
+    "tests/test_quality.py": "5e8b1cb11c48567e8d188b4cd53500f7b394a7885751b701dea608f6ab3bd4dd"
+  }
+}

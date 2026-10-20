@@ -1,0 +1,19 @@
+{
+  "name": "recallcircuit-console",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "check": "node --check src/app.js"
+  },
+  "dependencies": {
+    "genlayer-js": "1.1.8",
+    "viem": "^2.35.1"
+  },
+  "devDependencies": {
+    "vite": "^7.1.3"
+  }
+}

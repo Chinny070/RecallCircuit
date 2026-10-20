@@ -1,0 +1,38 @@
+name: RecallCircuit static and simulated protocol tests
+on:
+  push:
+  pull_request:
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install -r requirements-dev.txt
+      - run: python -m compileall -q contracts tests scripts
+      - run: python -m pytest tests/test_protocol.py tests/test_quality.py -q
+  genvm-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install genvm-linter==0.11.0
+      - run: genvm-lint check contracts/recall_circuit.py --json
+      - run: genvm-lint check contracts/recall_gate.py --json
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install
+        working-directory: frontend
+      - run: npm run check
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
