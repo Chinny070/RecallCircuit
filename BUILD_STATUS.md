@@ -9,15 +9,21 @@
 - Python AST/compileall and Node `--check` for frontend JS passed locally.
 - Docs: protocol state machine, threat model, read-only chain check, CI configuration, Claude handoff.
 
+## Verified remotely on GitHub Actions
+
+- Final commit `c24f104b617e7ce6314b00e5dc5266374b4018d7` was pushed to `Chinny070/RecallCircuit`.
+- GitHub Actions workflow [39502540919](https://github.com/Chinny070/RecallCircuit/actions/runs/39502540919) completed successfully: Python, core GenVM linter, and frontend build jobs each succeeded. This is CI, not live StudioNet proof.
+- The complete tracked 23-file source tree is on the `main` branch.
+
 ## Not completed / must not be claimed
 
 - Automatically detecting changed text at an existing CPSC notice URL (manual same-URL successor verification is supported).
-- `genvm-lint` and real GenVM Direct Mode runtime (not installed/available in this workspace); candidate Direct Mode tests are included but unverified.
-- Frontend `npm install` / `vite build` (package registry inaccessible from the execution container). `genlayer-js` version and fee API must be integration-verified.
+- **Real GenVM Direct Mode runtime** not executed; candidate Direct Mode tests are included but unverified. The core `genvm-lint` check passed in GitHub CI, but the optional consumer linter still needs explicit verification.
+- The frontend `npm run build` passed in GitHub CI. Browser/wallet/network/fee API and responsive manual integration still need live verification.
 - Deployment and lifecycle on StudioNet 61999; source parity and finalized receipts are **not available**.
 - Actual validator responses for CPSC web fetch and semantic match; current local tests mock those outputs and therefore do not demonstrate real classification accuracy.
 - StudioNet consumer-to-registry cross-contract integration, potentially unsupported in hosted Studio in current build.
 - Real auditor suitability and identity, production manufacturer authenticity, full legal regulatory compliance, universal recall coverage, physical remediation proof.
-- GitHub push not automatically established by local source generation; verify remote contents against ZIP manifest before declaring synced.
+- GitHub sync complete at `c24f104b`; subsequent commits for CI-evidence documentation may advance `main`.
 
 See `CLAUDE_FINISH_PROMPT.md` for the precise completion checklist.

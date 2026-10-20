@@ -1,13 +1,13 @@
 {
   "project": "RecallCircuit",
   "date": "2026-10-20",
-  "status": "37 simulated/static checks passed; GenVM direct/remote not verified",
+  "status": "37 local simulated/static checks passed; GitHub Python/core GenVM lint/frontend CI passed; Direct Mode/live StudioNet not verified",
   "files": {
     ".github/workflows/ci.yml": "f1faf70c64437167c4b8508a1a664161f9f3371bbfef9022365b55fa0da31e0a",
     ".gitignore": "90ad28e3f435f14e070fc2e87045a5259169e9353f81f3567f7c80bb3506bdb8",
-    "BUILD_STATUS.md": "80a75c0c85830c5aa81085d4393275692790d51446fa73b10f31f532b6a2f7e0",
-    "CLAUDE_FINISH_PROMPT.md": "130899e30ed29d524ef76e7359fbadc2e83a2631603d3bcbc5e1a1a13cf64a72",
-    "README.md": "e527ee3558b31dddc946f73237a3d9c46d17996801a0117ab9d739af9ccf65c1",
+    "BUILD_STATUS.md": "343a47af7b64545c7705b56a70e1909564f8acf97900870861b266822a69ee44",
+    "CLAUDE_FINISH_PROMPT.md": "8efe466ee98362932fb4b59685578fc582a24a94f6d978e18ae3f421acf2b7fd",
+    "README.md": "da9a761f449615bc452afff8e9699f644038aa45a7305d77bc8b3141b2e57ff0",
     "contracts/recall_circuit.py": "5fb3298ee5a6ad3aa1c02b4dbcad85cbd9a834af84dde19d4e930a425dbabd9d",
     "contracts/recall_gate.py": "78999c05d03cec0146f3c063b4cee0db415e54bde49094fc1f9548ac2e032900",
     "docs/STATE_MACHINE.md": "baf4d9654d4b3fe8f02c80cbf0403b7456664db4b4bb965bb4e3c98c71bfca21",

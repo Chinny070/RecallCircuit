@@ -4,7 +4,7 @@
 
 **Target network: StudioNet only — chain ID `61999` (`0xF22F`), RPC `https://studio.genlayer.com/api`.** No Bradbury, preview, fabricated explorer receipts, or fake application data.
 
-> **Build status (2026-10-20):** Substantial source implementation and frontend complete. **37 simulated/static checks passed locally.** Real `genlayer-test` Direct Mode, GenVM lint, StudioNet deployment, live source parity, and finalized consensus/consumer integration are **not yet verified**. See `BUILD_STATUS.md` and `CLAUDE_FINISH_PROMPT.md`.
+> **Build status (2026-10-20):** Substantial source implementation and frontend complete. **37 simulated/static checks passed locally.** GitHub CI **passed** for Python checks, the frontend build and the core GenVM linter. Real GenVM Direct Mode, StudioNet deployment, live source parity, and finalized consensus/consumer integration are **not yet verified**. See `BUILD_STATUS.md` and `CLAUDE_FINISH_PROMPT.md`.
 
 ## What makes this different
 
