@@ -4,7 +4,7 @@
 
 **Target network: StudioNet only — chain ID `61999` (`0xF22F`), RPC `https://studio.genlayer.com/api`.** No Bradbury, preview, fabricated explorer receipts, or fake application data.
 
-> **Build status (2026-10-20):** Substantial source implementation and frontend complete. **36 simulated/static checks passed locally.** Real `genlayer-test` Direct Mode, GenVM lint, StudioNet deployment, live source parity, and finalized consensus/consumer integration are **not yet verified**. See `BUILD_STATUS.md` and `CLAUDE_FINISH_PROMPT.md`.
+> **Build status (2026-10-20):** Substantial source implementation and frontend complete. **37 simulated/static checks passed locally.** Real `genlayer-test` Direct Mode, GenVM lint, StudioNet deployment, live source parity, and finalized consensus/consumer integration are **not yet verified**. See `BUILD_STATUS.md` and `CLAUDE_FINISH_PROMPT.md`.
 
 ## What makes this different
 
@@ -42,7 +42,7 @@ notice has a resolved case.
 | `contracts/recall_circuit.py` | Bounded notice, product, case, appeal, remediation and graph protocol |
 | `contracts/recall_gate.py` | Optional cross-contract release consumer; integration on StudioNet not yet verified |
 | `frontend/` | Real-chain dashboard, asset/notice/case/remedy forms, injected-wallet connection, StudioNet network switch and latest-final reads |
-| `tests/test_protocol.py` | 30 **simulated SDK state-machine** tests; not live GenVM results |
+| `tests/test_protocol.py` | 31 **simulated SDK state-machine** tests; not live GenVM results |
 | `tests/test_quality.py` | 6 static contract/UX checks |
 | `tests/direct/` | Additional Direct Mode candidates; runtime execution is outstanding |
 | `docs/THREAT_MODEL.md` | Trust boundaries and design limitations |

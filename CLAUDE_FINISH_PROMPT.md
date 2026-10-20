@@ -1,6 +1,6 @@
 # CLAUDE CODE — RECALLCIRCUIT IMPLEMENTATION, STUDIO-NET FINALIZATION & FULL PROOF
 
-You are continuing an EXISTING substantial GenLayer project named **RecallCircuit**. Work on **https://github.com/Chinny070/RecallCircuit** using this supplied complete source ZIP as the authoritative starting material. The ZIP includes the full contract sources, frontend, 36 locally passing simulated/static checks, documentation and this handoff. The repo may initially be empty or contain only scaffolding: synchronize carefully, preserve source, and push complete tracked sources to the user's repo. **Do not start over, do not replace it with a toy/demo or transplant ContextFold code. No Codex and no Docker are needed.**
+You are continuing an EXISTING substantial GenLayer project named **RecallCircuit**. Work on **https://github.com/Chinny070/RecallCircuit** using this supplied complete source ZIP as the authoritative starting material. The ZIP includes the full contract sources, frontend, 37 locally passing simulated/static checks, documentation and this handoff. The repo may initially be empty or contain only scaffolding: synchronize carefully, preserve source, and push complete tracked sources to the user's repo. **Do not start over, do not replace it with a toy/demo or transplant ContextFold code. No Codex and no Docker are needed.**
 
 ## Goal
 
@@ -18,7 +18,7 @@ A genuinely high-quality, distinct Intelligent Contract that independently asses
 ## First: audit, build and repair rather than restart
 
 1. Read `README.md`, `BUILD_STATUS.md`, `docs/STATE_MACHINE.md`, `docs/THREAT_MODEL.md`, both Python contracts, the app, and all tests. Check the actual remote branch before writing; avoid overwriting new work.
-2. Run `python -m pytest tests/test_protocol.py tests/test_quality.py -q` (locally recorded as **36 passed**). Run `python -m compileall -q contracts tests scripts` and `node --check frontend/src/app.js`. Preserve pass counts but diagnose anything that differs. Note the simulated SDK uses Python SHA3 (NOT exact Keccak) only to compare commitments inside its mock; live proof must check canonical Keccak against chain.
+2. Run `python -m pytest tests/test_protocol.py tests/test_quality.py -q` (locally recorded as **37 passed**). Run `python -m compileall -q contracts tests scripts` and `node --check frontend/src/app.js`. Preserve pass counts but diagnose anything that differs. Note the simulated SDK uses Python SHA3 (NOT exact Keccak) only to compare commitments inside its mock; live proof must check canonical Keccak against chain.
 3. Install compatible GenVM tools and run BOTH `genvm-lint check contracts/recall_circuit.py --json` and `genvm-lint check contracts/recall_gate.py --json`. Address *every* substantive storage/type/AST/lazy-call error; do not suppress lint, remove the web/LLM validator, or replace real classification with a deterministic stub. Check actual deployed source size; split only if limits require it and preserve the security model.
 4. Install the real `genlayer-test` Direct Mode runner compatible with StudioNet SDK. Run and fix `tests/direct/test_recallcircuit_direct.py`; extend to honest AFFECTED/CLEAR/UNCERTAIN, official source absent, mismatched official ID, false-positive/false-negative leader, malicious prompt injection, owner isolation, graph cycles and depth, competing notice versions, pending appeals, stale cases, forged remedy/unauthorized auditor, and secondary contract. Turn on pickling validation. Record exact test results and conditions without conflating mocked leader with real validators.
 5. Audit all current design weaknesses. Priority: source/redirect allowlist and parsing, replay protection, gas/size bounds for 64 notices and 512 cases, graph cycles and ancestor depth, source-content hash/versioning, official recall ID/date canonicalization, credible *exclusions* (avoid falsely calling products safe), duplicate serials/issuer attestations, revision transition rollback, current-case coverage, and auditability. Add new tests for any fixed defect. Do not claim registered cases cover unsubmitted recalls.
@@ -38,7 +38,7 @@ A genuinely high-quality, distinct Intelligent Contract that independently asses
    - parent/component assembly: child recall propagates hold to a parent that would otherwise clear;
    - pending/denied/appeal: no early release; verify final state after adjudication;
    - malicious proposal or leader: demonstrate honest Direct Mode validator rejection if live fault-injection is impossible;
-   - official notice revision: only same recall ID allowed, old clear invalidated until replacement scope is re-adjudicated;
+   - official notice revision: same-URL manual re-verification and same recall ID required, old clear invalidated until replacement scope is re-adjudicated;
    - separate auditor role; forged proof hash/unauthorized attestations refused;
    - remedy denial on missing evidence; legitimate positive remedy ONLY if authentic proof is actually available;
    - `is_release_allowed` readback for all stages and non-owner/unauthorized writes.

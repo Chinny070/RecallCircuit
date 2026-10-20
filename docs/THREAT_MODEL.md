@@ -30,6 +30,7 @@
 
 ## Remaining attack surface / engineering work
 
+- **Manual notice refresh:** If an official CPSC page changes in place, an original submitter must create and verify a successor notice using the SAME URL. The protocol does not automatically monitor regulator edits and an old clearance may be outdated until the revision is initiated. The stored source digest covers validated notice metadata, not every page byte.
 - **No full recall universe:** A product may have an unassessed recall even if its registered cases are clear; do not present release eligibility as universal safety.
 - **No manufacturer PKI:** Self-declared model, batch and serial can be dishonest. For production, add verified manufacturer credentials and distinct authority attestations.
 - **No physical-world enforcement:** Onchain clearance cannot prove a product was repaired or prohibit a warehouse operator from ignoring the contract.

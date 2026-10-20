@@ -2,7 +2,7 @@
 
 ## Notice lifecycle
 
-`PROPOSED(0) -> VERIFIED(1)` only after independent re-execution of official CPSC page and agreement on `official_id/title/recall_date/valid`. Invalid or unavailable sources keep the transaction unfinalized/failed, **not verified**. `REJECTED(2)` reserved as an enum for future governance; current implementation does not transition to it. A verified revision must preserve the official recall ID, and can supersede one earlier notice. A proposed revision does not affect current decisions; a verified revision does.
+`PROPOSED(0) -> VERIFIED(1)` only after independent re-execution of official CPSC page and agreement on `official_id/title/recall_date/valid`. Invalid or unavailable sources keep the transaction unfinalized/failed, **not verified**. `REJECTED(2)` reserved as an enum for future governance; current implementation does not transition to it. A verified revision must preserve the official recall ID, and can supersede one earlier notice. A proposed revision does not affect current decisions; a verified revision does. The original submitter may reverify the same official URL when the regulator edits an existing notice. This is MANUAL; there is no automatic polling for page changes.
 
 ## Case lifecycle
 

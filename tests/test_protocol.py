@@ -295,3 +295,17 @@ def test_decision_digest_changes_after_appeal(state):
     c.appeal_case(cid,'Re-check original recall exclusions')
     c.resolve_case(cid)
     assert c.get_case(cid)['decision_hash']!=earlier
+
+
+def test_same_url_can_be_explicitly_reverified_as_revision(state):
+    c,m,gl,llm,battery,aid,nid=init(state)
+    llm.finding='NOT_AFFECTED'
+    old=c.open_case(aid,nid);c.resolve_case(old)
+    assert c.is_release_allowed(aid)
+    successor=c.propose_notice(URL,nid)
+    assert c.is_release_allowed(aid)
+    c.verify_notice(successor)
+    assert c.get_notice(successor)['parent']==nid
+    assert not c.is_release_allowed(aid)
+    new_case=c.open_case(aid,successor);c.resolve_case(new_case)
+    assert c.is_release_allowed(aid)
