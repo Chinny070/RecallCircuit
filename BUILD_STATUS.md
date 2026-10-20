@@ -12,13 +12,13 @@
 ## Verified remotely on GitHub Actions
 
 - Final commit `c24f104b617e7ce6314b00e5dc5266374b4018d7` was pushed to `Chinny070/RecallCircuit`.
-- GitHub Actions workflow [39502540919](https://github.com/Chinny070/RecallCircuit/actions/runs/39502540919) completed successfully: Python, core GenVM linter, and frontend build jobs each succeeded. This is CI, not live StudioNet proof.
+- GitHub Actions workflow [39502540919](https://github.com/Chinny070/RecallCircuit/actions/runs/39502540919) completed successfully: Python, GenVM linter (both contracts), and frontend build jobs each succeeded. This is CI, not live StudioNet proof.
 - The complete tracked 23-file source tree is on the `main` branch.
 
 ## Not completed / must not be claimed
 
 - Automatically detecting changed text at an existing CPSC notice URL (manual same-URL successor verification is supported).
-- **Real GenVM Direct Mode runtime** not executed; candidate Direct Mode tests are included but unverified. The core `genvm-lint` check passed in GitHub CI, but the optional consumer linter still needs explicit verification.
+- **Real GenVM Direct Mode runtime** not executed; candidate Direct Mode tests are included but unverified. Both `genvm-lint` checks (core and optional consumer) passed in GitHub CI.
 - The frontend `npm run build` passed in GitHub CI. Browser/wallet/network/fee API and responsive manual integration still need live verification.
 - Deployment and lifecycle on StudioNet 61999; source parity and finalized receipts are **not available**.
 - Actual validator responses for CPSC web fetch and semantic match; current local tests mock those outputs and therefore do not demonstrate real classification accuracy.

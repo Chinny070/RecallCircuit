@@ -5,9 +5,9 @@
   "files": {
     ".github/workflows/ci.yml": "f1faf70c64437167c4b8508a1a664161f9f3371bbfef9022365b55fa0da31e0a",
     ".gitignore": "90ad28e3f435f14e070fc2e87045a5259169e9353f81f3567f7c80bb3506bdb8",
-    "BUILD_STATUS.md": "343a47af7b64545c7705b56a70e1909564f8acf97900870861b266822a69ee44",
-    "CLAUDE_FINISH_PROMPT.md": "8efe466ee98362932fb4b59685578fc582a24a94f6d978e18ae3f421acf2b7fd",
-    "README.md": "da9a761f449615bc452afff8e9699f644038aa45a7305d77bc8b3141b2e57ff0",
+    "BUILD_STATUS.md": "292a7584f06a0703318b4f075b75064bc24d740455d921731ad0df85df58eaad",
+    "CLAUDE_FINISH_PROMPT.md": "07a989fd3c7612d2dfaf3b86c4ee662ab98a4e228c8e2b4852a5d97e31f89990",
+    "README.md": "21b70af06b821f83582698e0a6f40518a4374ac13a64da429eaeb10f2286c897",
     "contracts/recall_circuit.py": "5fb3298ee5a6ad3aa1c02b4dbcad85cbd9a834af84dde19d4e930a425dbabd9d",
     "contracts/recall_gate.py": "78999c05d03cec0146f3c063b4cee0db415e54bde49094fc1f9548ac2e032900",
     "docs/STATE_MACHINE.md": "baf4d9654d4b3fe8f02c80cbf0403b7456664db4b4bb965bb4e3c98c71bfca21",
