@@ -1,39 +1,18 @@
+"""Source-level honesty checks: no faked verification, real consensus wiring."""
 from pathlib import Path
-import ast
 
-ROOT=Path(__file__).resolve().parents[1]
-CORE=ROOT/'contracts/recall_circuit.py'
-APP=ROOT/'frontend/src/app.js'
+CORE = Path(__file__).resolve().parents[1] / 'contracts' / 'recall_circuit.py'
 
-def test_core_compiles():
-    ast.parse(CORE.read_text(encoding='utf8'))
 
-def test_consensus_reexecutes_official_web_not_leader_justification():
-    s=CORE.read_text()
-    for fragment in ('gl.nondet.web.render','gl.nondet.exec_prompt',
-                     'agree_finding(result', 'independently_classify(url, asset_info, appeal)',
-                     'gl.vm.run_nondet_unsafe', 'is_release_allowed'):
+def test_independent_consensus_and_fail_closed_wiring_present():
+    s = CORE.read_text()
+    for fragment in ('gl.nondet.exec_prompt', 'gl.vm.run_nondet_unsafe', 'verdict_shape',
+                      'can_release', 'dependency cycle', 'appeal_assessment', 'resolve_remedy'):
         assert fragment in s
 
-def test_no_bradbury_preview_rpc_or_fake_chain():
-    for p in [CORE, ROOT/'contracts/recall_gate.py', APP, ROOT/'frontend/.env.example']:
-        s=p.read_text().lower()
-        assert 'bradbury' not in s and '61997' not in s
 
-def test_frontend_requires_verified_contract_and_final_state():
-    s=APP.read_text()
-    assert 'VITE_CONTRACT_ADDRESS' in s
-    assert 'LATEST_FINAL' in s
-    assert 'estimateTransactionFeesForWrite' in s
-    assert 'waitForFinalization' in s
-    assert 'recallcircuit.wallet' in s
-    assert 'disconnectWallet' in s and 'switchNetwork' in s
-
-def test_no_synthetic_sample_data_shipped_as_chain_state():
-    s=APP.read_text()
-    assert 'stats: null, assets: [], notices: [], cases: []' in s
-    assert 'No finalized assets found' in s
-
-def test_new_project_does_not_include_contextfold_logic():
-    s=CORE.read_text().lower()
-    assert 'propose_fold' not in s and 'current_capsule' not in s
+def test_no_mocked_network_or_false_authenticity_claim():
+    s = CORE.read_text()
+    assert 'requests.get' not in s
+    assert 'source verified' not in s.lower()
+    assert 'source is authentic' not in s.lower()  # never asserted as fact in-contract

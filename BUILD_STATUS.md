@@ -1,29 +1,30 @@
-# Build status — 20 October 2026
+# Build status — 21 October 2026
 
-## Completed in this handoff (local)
+## Deployed and live
 
-- Core `RecallCircuit` Intelligent Contract with official notice verification, asset identity, bounded dependency graph, affected/clear/uncertain classification, default holds, appeals, versioned notice revisions, separate auditor acceptance, remedy attestation and finality-aware read interface.
-- Optional `ReleaseGuard` cross-contract consumer source.
-- Bright responsive Vite dashboard with latest-final reads, register/link/freeze/notice/case/appeal/remedy/attestation flows, wallet copy/disconnect, remembered connection, StudioNet-only network switch, hash generation, and explicit empty states instead of fake data.
-- 31 simulated protocol tests and 6 additional static tests **passed locally** (37 total).
-- Python AST/compileall and Node `--check` for frontend JS passed locally.
-- Docs: protocol state machine, threat model, read-only chain check, CI configuration, Claude handoff.
+- `RecallCircuit` deployed to **StudioNet (chain 61999)** at `0x8485533fAB15D14F5231B97C51e7EDcE3fF12377`. Deploy tx `0x29a431c94f2b67ffc536d700d289d6f26370417c29aa3cc3801a413637743ca0`, **FINALIZED**, 5/5 validator `AGREE`.
+- Real on-chain lifecycle executed and read back: product registration, notice filing, independent leader+validator AFFECTED/NOT_AFFECTED/UNCERTAIN classification, a successful remedy, a rejected forged remedy, an appeal reversing a verdict on new evidence, component propagation through an assembled product, and notice supersession correctly invalidating the old version. Full detail, exact reasons and vote tallies in [`docs/LIVE_PROOFS.md`](docs/LIVE_PROOFS.md).
+- StudioNet is gasless; no GEN was spent in this session.
 
-## Verified remotely on GitHub Actions
+## Fixed in this handoff
 
-- Final commit `c24f104b617e7ce6314b00e5dc5266374b4018d7` was pushed to `Chinny070/RecallCircuit`.
-- GitHub Actions workflow [39502540919](https://github.com/Chinny070/RecallCircuit/actions/runs/39502540919) completed successfully: Python, GenVM linter (both contracts), and frontend build jobs each succeeded. This is CI, not live StudioNet proof.
-- The complete tracked 23-file source tree is on the `main` branch.
+- `gltest.config.yaml` previously used an invalid schema (`network:` singular, missing `paths`/`networks.default`) and made `pytest`/`gltest` fail to even collect. Corrected to the real `gltest_cli` config schema.
+- The entire `tests/` suite (`conftest.py`, `test_protocol.py`, the Direct Mode test) was written against an **earlier, abandoned contract API** (`register_asset`/`Asset`/`Case`/`propose_notice`/`open_case`/`is_release_allowed`, string-keyed LLM responses) that no longer matches `contracts/recall_circuit.py` (`register_product`/`Product`/`Notice`/`Assessment`/`can_release`, integer-coded structured verdicts). Every one of those 31 "passed" tests from the prior handoff was executing against mock classes that no longer corresponded to the real contract's methods — they were not meaningful evidence. The stale simulator (`tests/conftest.py`, `tests/test_protocol.py`) has been removed; `tests/direct/test_recallcircuit_direct.py` and `tests/test_quality.py` have been rewritten against the real contract API and now run through `genlayer-test`'s actual Direct Mode GenVM-SDK runtime (not a hand-rolled simulator). `tests/test_contract_static.py` was already aligned and is unchanged.
+- `docs/STATE_MACHINE.md` was rewritten; it previously described the same abandoned API.
+- Both contracts (`recall_circuit.py`, `recall_gate.py`) pass `genvm-lint check` (AST safety + SDK validation) with no errors, only an informational "newer runner available" notice.
+
+## Verified locally this session
+
+- `python -m pytest tests -q` → 22 passed (9 real Direct-Mode GenVM-SDK tests, 6 static/AST honesty tests, 2 quality tests, plus the static-contract parametrized cases).
+- `genvm-lint check` on both contracts.
 
 ## Not completed / must not be claimed
 
-- Automatically detecting changed text at an existing CPSC notice URL (manual same-URL successor verification is supported).
-- **Real GenVM Direct Mode runtime** not executed; candidate Direct Mode tests are included but unverified. Both `genvm-lint` checks (core and optional consumer) passed in GitHub CI.
-- The frontend `npm run build` passed in GitHub CI. Browser/wallet/network/fee API and responsive manual integration still need live verification.
-- Deployment and lifecycle on StudioNet 61999; source parity and finalized receipts are **not available**.
-- Actual validator responses for CPSC web fetch and semantic match; current local tests mock those outputs and therefore do not demonstrate real classification accuracy.
-- StudioNet consumer-to-registry cross-contract integration, potentially unsupported in hosted Studio in current build.
-- Real auditor suitability and identity, production manufacturer authenticity, full legal regulatory compliance, universal recall coverage, physical remediation proof.
-- GitHub sync complete at `c24f104b`; subsequent commits for CI-evidence documentation may advance `main`.
+- **No authoritative CPSC source verification.** `file_notice` still trusts claimant-supplied text/URL/hash; there is no `gl.nondet.web` fetch of the regulator's page, no domain allowlist, and no cryptographic binding to official CPSC content. This is the single largest gap against the original handoff brief (`CLAUDE_FINISH_PROMPT.md` item 2) and was not built in this session — it requires a genuinely supported GenVM nondeterministic web-access path to be designed, tested, and reviewed, not retrofitted quickly.
+- **No DoS-resistant / authorized source registration** for notices (handoff item 3).
+- A few early transaction hashes from this session's on-chain lifecycle run were not retained in captured CLI output (truncated before the hash line) and the public GenLayer explorer was returning `503 DEPLOYMENT_PAUSED` when I tried to recover them afterward; every such step is still backed by an on-chain state read, documented in `docs/LIVE_PROOFS.md`, rather than an unverifiable claim.
+- `ReleaseGuard` (`contracts/recall_gate.py`) lints cleanly but was not deployed or exercised live this session.
+- Stress tests, replay/race tests, and a dedicated CI run against the updated test suite were not performed this session.
+- Real auditor identity, production manufacturer authenticity, and full legal regulatory compliance remain out of scope, as before.
 
-See `CLAUDE_FINISH_PROMPT.md` for the precise completion checklist.
+See [`CLAUDE_FINISH_PROMPT.md`](CLAUDE_FINISH_PROMPT.md) for the full original checklist and [`docs/LIVE_PROOFS.md`](docs/LIVE_PROOFS.md) for exact on-chain evidence.

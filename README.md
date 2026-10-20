@@ -2,7 +2,7 @@
 
 **Safety-first, notice-scoped product recall adjudication and component quarantine on GenLayer.**
 
-Status: **source implementation / not deployed / not audited / GenVM compatibility and actual validator behavior unverified**. The provided URL and text are **claimant-supplied**, not independently verified regulatory material. This is not a public-product-safety certification.
+Status: **deployed and live on StudioNet (chain 61999)**, with real multi-validator consensus demonstrated across affected/excluded/remedy/appeal/supersession flows — see [`docs/LIVE_PROOFS.md`](docs/LIVE_PROOFS.md) for the contract address, transaction evidence and reads. Not audited. Notice URL and text are **claimant-supplied**, not independently fetched or authenticated from the regulator by the contract (see Constraints below) — this is not a public-product-safety certification.
 
 ## Why GenLayer?
 
@@ -33,14 +33,14 @@ Recall notices describe manufacturer, batch, model, manufacturing date, serial r
 - Pending appeals hold an item. Changed product topology invalidates parent assessment via revision. Superseded notices are not counted as current, but new version requires new assessment.
 - No frontend is required for a standalone Intelligent Contract submission; provide visualization separately only after real call semantics are verified.
 
-## Local testing
+## Testing
 
 ```bash
-python -m pip install pytest
+pip install -r requirements-test.txt -r requirements-dev.txt
+genvm-lint check contracts/recall_circuit.py
 python -m pytest tests -q
-python -m compileall -q contracts tests
 ```
 
-These tests are **pure/static only**. They do not demonstrate GenVM deployment or live semantic consensus. See [Claude handoff](CLAUDE_FINISH_PROMPT.md) for the mandatory next steps, including full Direct Mode adversarial coverage, StudioNet compatibility, official source verification, and finalized lifecycle evidence.
+`tests/direct/` runs the real GenVM SDK runtime in Direct Mode (actual `@allow_storage` storage types, `gl.vm.run_nondet_unsafe` leader/validator wiring) with only the LLM boundary mocked via `direct_vm.mock_llm`. `tests/test_contract_static.py` and `tests/test_quality.py` are static/AST-level honesty checks. None of this is full multi-validator StudioNet consensus — for that, see [`docs/LIVE_PROOFS.md`](docs/LIVE_PROOFS.md), which documents the actual deployed contract address and on-chain lifecycle runs on StudioNet.
 
-Target chain: **GenLayer StudioNet 61999**, RPC `https://studio.genlayer.com/api`. No other chain target is intended.
+Target chain: **GenLayer StudioNet 61999**, RPC `https://studio.genlayer.com/api` (gasless). No other chain target is intended.

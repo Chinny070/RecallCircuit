@@ -1,46 +1,53 @@
 # RecallCircuit state machine and invariants
 
+This reflects the actual `RecallCircuit` contract in `contracts/recall_circuit.py` as deployed. It supersedes any earlier draft describing `Asset`/`Case`/`propose_notice` — those methods do not exist in the shipped contract.
+
 ## Notice lifecycle
 
-`PROPOSED(0) -> VERIFIED(1)` only after independent re-execution of official CPSC page and agreement on `official_id/title/recall_date/valid`. Invalid or unavailable sources keep the transaction unfinalized/failed, **not verified**. `REJECTED(2)` reserved as an enum for future governance; current implementation does not transition to it. A verified revision must preserve the official recall ID, and can supersede one earlier notice. A proposed revision does not affect current decisions; a verified revision does. The original submitter may reverify the same official URL when the regulator edits an existing notice. This is MANUAL; there is no automatic polling for page changes.
+`file_notice` accepts a claimant-submitted notice (`authority`, `source_url` must be `https://`, `source_id`, `notice_text`, `source_hash`) and marks it `active`. **The contract does not fetch or cryptographically verify the regulator's page itself** — there is no live web-fetch step in this build (see Limitations). A notice's authenticity is therefore established outside the contract (off-chain operational trust in who is allowed to call `file_notice`), and `get_notice`/`gate_explanation` must not be presented as proof of regulator authenticity.
 
-## Case lifecycle
+`supersede_notice(old_id, text, source_hash)` deactivates `old_id` and creates a new notice with `version = old.version + 1`, `previous_id = old_id`, preserving `authority`/`source_url`/`source_id`. Any assessment opened against a deactivated notice cannot be created (`open_assessment` reverts with `superseded notice`); assessments already resolved against the old version remain readable but do not satisfy `can_release` for the new version.
+
+## Assessment lifecycle
 
 ```
-open_case:           PENDING(0)       [HOLD]
-resolve_case:        AFFECTED(1)      [HOLD]
-                    CLEAR(2)         [scoped clearance]
-                    UNCERTAIN(3)     [HOLD]
-appeal_case:         APPEAL(4)        [HOLD, bounded to two]
-resolve_case again:  AFFECTED|CLEAR|UNCERTAIN
-propose_remedy:      REMEDY(5)        [HOLD, only from AFFECTED]
-resolve_remedy:      REMEDIATED(6)    [scoped clearance, audited]
-                    AFFECTED(1)      [HOLD if remedy insufficient]
-revision/stale:     old case effectively HOLD until new current notice case clears
+open_assessment(product_id, notice_id):   status=UNCERTAIN, pending=True   [HOLD]
+resolve_assessment(assessment_id):
+    notice inactive or product.revision changed since open -> UNCERTAIN  [HOLD]
+    else -> independent leader+validator classification:
+        AFFECTED(1)      [HOLD]
+        NOT_AFFECTED(2)  [scoped clearance, this notice only]
+        UNCERTAIN(3)     [HOLD — malformed/unavailable/ambiguous always falls here]
+appeal_assessment(assessment_id, evidence):  appealed=True, opens Appeal(OPEN)   [HOLD regardless of outcome until resolved]
+resolve_appeal(appeal_id):  re-runs independent classification with appeal evidence
+    -> AFFECTED | NOT_AFFECTED | UNCERTAIN; generation += 1
+request_remedy(assessment_id, evidence):  only from AFFECTED; opens Remedy(OPEN)  [HOLD]
+resolve_remedy(remedy_id):
+    classification outcome == NOT_AFFECTED AND notice still active AND assessment not pending
+        -> REMEDIATED(5)  [scoped clearance]
+    else -> UNCERTAIN(3)  [HOLD; quarantine preserved]
 ```
 
-Local `C_STALE=7` occurs if the asset revision or notice lineage moves before resolution. All status values except `C_CLEAR` and `C_REMEDIATED` are blocking. `is_release_allowed` additionally checks ancestor component graph recursively, manual frozen flag, any missing registration coverage, outdated notice lineages and asset revisions.
+`SUPERSEDED(4)` is a reserved enum value; the contract does not currently assign it to an assessment — a superseded notice instead blocks new assessments outright and leaves old ones as historical record.
 
-## Core invariants
+## Core invariants (as implemented)
 
-1. **No unadjudicated release.** A standalone product without any verified-notice case is not releasable.
-2. **No scope laundering.** Affected and uncertain findings are never treated as safe; validator compares independently derived verdicts, not leader text formatting.
-3. **No untrusted source privilege.** Only official CPSC URL namespaces can create regulator notices. External remedy proof is lower trust, additionally requiring a separate consenting auditor.
-4. **No graph laundering.** Components cannot be linked after either asset is involved in a case. Graph cycles and different ownership are prohibited.
-5. **No appeal bypass.** Opening an appeal instantly holds a previously cleared case. Unresolved validator disagreement leaves its original hold state.
-6. **No stale revision bypass.** When a notice revision is verified, earlier scoped decisions no longer authorize shipment until a successor case is cleared.
-7. **No owner self-remedy.** Asset owner and auditor must be different, and the auditor must accept appointment and attest the exact evidence URL commitment.
-8. **Final-state consumer.** The frontend reads `LATEST_FINAL` and does not treat submitting a transaction or merely obtaining a hash as proof of execution success.
+1. **Fail-closed by default.** `can_release(product_id)` returns `False` unless, for every currently-active notice and for the product and every linked component (recursively, bounded by `MAX_PRODUCTS`), the most recent assessment against that notice is resolved (`not pending`), not under an open appeal, has status `NOT_AFFECTED` or `REMEDIATED`, and matches the product's current `revision`.
+2. **No scope laundering.** The validator independently re-runs the same classification prompt and the transaction only finalizes if its `outcome` integer matches the leader's; prose differences in `reason` are ignored, so a leader cannot smuggle a different verdict through wording.
+3. **Malformed/ambiguous never clears.** `verdict_shape` rejects anything that isn't exactly `{"outcome": int in {1,2,3}, "reason": str 1..300 chars}`; any JSON parse failure, wrong type, or extra/missing key collapses to `UNCERTAIN`.
+4. **Graph cycle and self-link rejection.** `link_component` runs a bounded DFS (capped at `MAX_PRODUCTS`) over existing links before accepting a new edge; self-reference and cycles revert.
+5. **Owner-gated writes.** `link_component`, `appeal_assessment`, and `request_remedy` all require `gl.message.sender_address == product.owner`.
+6. **Revision invalidation.** `link_component` increments the product's `revision`; `can_release` compares `assessment.product_revision` against the product's current `revision`, so a structural change invalidates prior clearances until reassessed.
+7. **Remedy requires independent reclassification.** `resolve_remedy` does not accept the applicant's evidence text at face value — it re-runs the same leader+validator classification with the remedy evidence as additional context, and only a consensus `NOT_AFFECTED` outcome clears the hold.
 
 ## Bounds
 
-Up to 256 assets, 64 notices, 512 cases, 8 child references per asset, 4 recursion layers, and 12 cases per asset. These are deliberate bounded prototype limits, not throughput benchmarks. Notice classification prompts use bounded page excerpts. Materially larger recalls and graph workloads require profiling, pagination and perhaps separate indexing contracts.
+`MAX_TEXT=1800` chars per text field, `MAX_PRODUCTS=500`, `MAX_LINKS=12` components per product, `MAX_NOTICES=100`. These are deliberate bounded-execution limits for GenVM gas/storage-scan cost, not production throughput targets. `can_release` is O(components × notices × assessments) per call and is the dominant cost; see Limitations.
 
-## Important limitations
+## Important limitations (unresolved, must not be claimed as solved)
 
-- `is_release_allowed` is a gate over **registered assessed cases**. It does not automatically fetch/scan every official recall for every registered inventory item. This must be made explicit in UI and scoring claims.
-- Component edges require the same owner, limiting multi-supplier graphs. A production design needs signed cross-entity provenance attestations.
-- Remedy evidence URLs can be forged; even with validator agreement, LLMs and auditors may both err. There is no cryptographic proof of physical repair.
-- Parent-child depth guards are bounded; deeply nested graphs may become unreleasable (fail-closed) rather than incorrectly allowed.
-- Direct Mode may expose GenVM syntax/storage constraints that the simulated SDK cannot catch. Keep contract code subject to real lint and consensus tests.
-- `ReleaseGuard` must be explicitly verified against StudioNet intercontract call support, not assumed from SDK interfaces alone.
+- **No authoritative source verification.** `file_notice` trusts the caller's text, URL, and hash. There is no `gl.nondet.web` fetch of the regulator's page, no domain allowlist, and no cryptographic binding to a CPSC-signed artifact in this build. A notice is only as trustworthy as whoever is permitted to call `file_notice` off-chain — this must be stated plainly in any public description of the system, and the contract must not be marketed as a verified-authenticity recall registry until this is built.
+- **No DoS-resistant source registration.** Any address can call `file_notice` up to `MAX_NOTICES` times; there is no stake, allowlist, or independent-acceptance step gating who can file a notice that blocks products.
+- **No cryptographic remedy proof.** `resolve_remedy` relies on LLM classification of free-text evidence; there is no signed shop/vendor attestation or serial-binding cryptography.
+- **`can_release` cost is unbounded by notice count in the worst case.** It scans every notice and every assessment per call; this must be profiled before it is relied on for large registries.
+- **Direct Mode vs. live StudioNet.** `tests/direct/` exercises the real GenVM SDK runtime (storage types, `gl.vm.run_nondet_unsafe` leader/validator wiring) with only the LLM boundary mocked — this is real SDK execution, not a hand-rolled simulator, but it is still not full multi-validator StudioNet consensus. See `docs/LIVE_PROOFS.md` for the actual StudioNet deployment and lifecycle evidence.
