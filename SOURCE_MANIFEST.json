@@ -1,9 +1,9 @@
 {
   "project": "RecallCircuit",
   "date": "2026-10-21",
-  "status": "Deployed live on StudioNet 61999: core lifecycle, authoritative source verification, authorized-filer allowlist, and cross-contract ReleaseGuard enforcement all demonstrated with real transactions; see docs/LIVE_PROOFS.md and BUILD_STATUS.md",
+  "status": "Deployed live on StudioNet 61999: core lifecycle, authoritative source verification, authorized-filer allowlist, and cross-contract ReleaseGuard enforcement all demonstrated with real transactions; CI fixed to run the current test suite; see docs/LIVE_PROOFS.md and BUILD_STATUS.md",
   "files": {
-    ".github/workflows/ci.yml": "ef6e5a9c2550bb4b03f02adb6d0fdb935ae3dfc43203ee27185b09fcfd5b2348",
+    ".github/workflows/ci.yml": "b89a23b01bf7d1008728395640f00d2cd2ece625524ef485ae58e7a0af8da080",
     ".gitignore": "ff3b7ec9e9d964c17e547d47a03a91f757b5a842440e9f44089ebe0d8bc75c3c",
     "BUILD_STATUS.md": "13692e5681b8e8f9a11660cf035d9331b942132da4dfef0fbc5db30411e2ce74",
     "CLAUDE_FINISH_PROMPT.md": "ca3920810a55a9741c98580d21e94d5c6fddef838a43e503125fa161552cc0f5",
@@ -19,9 +19,8 @@
     "frontend/src/styles.css": "2a438a9ccb2338b2b552782484e2bb4396fc89116cd30e5263e939a638720d60",
     "gltest.config.yaml": "ea8cf04797f7c55637d8ba602a452c38df5419bbc41c057509b402896d61206d",
     "package.json": "b60f7ed7aa4561988b306debbbbdeeb098ed6cbeaa8f723862a476fa4ed2c90b",
-    "README.md": "9489558c3f3c1965c13049f66bcf0fd8046ff9eb661bdee9ad6c4d3d789cf955",
-    "requirements-dev.txt": "50637ce7cc0a81ef10227e01ad9eff02e8ab292f6caef832853c2e9c73a70db9",
-    "requirements-test.txt": "dd5a5ae541f4bd1370daa649106c12f2d5ad3f70c5182762378fa9a19c652a8f",
+    "README.md": "42ad88b286352d903c34e59f0a56122ce81f9c89c38a7293ed2cc075e9432e7e",
+    "requirements-dev.txt": "02b75b1dd4b8611cb9b80c254b74a79ee782c5e2b8f3478a63ef2c9ac4164dbe",
     "scripts/check_rpc.py": "0239de53f5a20856c1925820330496f9289ffb088dc01d4b55e07fa34f366435",
     "tests/direct/test_recallcircuit_direct.py": "34ad87e9d1bf774c8c48db0983e8da289bf27c586fe1d43eb181fb2d683927cb",
     "tests/test_contract_static.py": "56fc3a244abc09210bea3196c9fb7b4887f571d4e17de01fd72141f6dfcbdede",

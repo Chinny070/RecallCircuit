@@ -36,7 +36,7 @@ Recall notices describe manufacturer, batch, model, manufacturing date, serial r
 ## Testing
 
 ```bash
-pip install -r requirements-test.txt -r requirements-dev.txt
+pip install -r requirements-dev.txt
 genvm-lint check contracts/recall_circuit.py
 python -m pytest tests -q
 ```
