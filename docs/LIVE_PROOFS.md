@@ -4,7 +4,26 @@ Recorded 2026-10-20/21 against **StudioNet (chain ID 61999, RPC `https://studio.
 
 No step below used a mock, simulator, or fabricated value. Every status, reason string, and vote tally is copied verbatim from a `genlayer write`/`genlayer call`/`genlayer receipt` response. Where a transaction hash was not captured in the terminal output before truncation, that is stated explicitly rather than invented — the corresponding on-chain state read is cited instead as the evidence.
 
-This document covers three deployments: an initial deployment (section A) demonstrating the core adjudication lifecycle with claimant-supplied notice text, a second deployment (section B) after adding real authoritative-source verification, demonstrated against a genuine, currently-live CPSC recall fetched over `gl.nondet.web.render`, and a third deployment (section C) after adding an admin-gated authorized-filer allowlist to bound notice-filing DoS/griefing.
+This document covers four deployments: an initial deployment (section A) demonstrating the core adjudication lifecycle with claimant-supplied notice text, a second deployment (section B) after adding real authoritative-source verification, demonstrated against a genuine, currently-live CPSC recall fetched over `gl.nondet.web.render`, a third deployment (section C) after adding an admin-gated authorized-filer allowlist to bound notice-filing DoS/griefing, and a standalone `ReleaseGuard` consumer contract (section D) proving the gate is enforceable cross-contract, not just by direct calls to RecallCircuit.
+
+## D. ReleaseGuard — cross-contract gate enforcement (live)
+
+`contracts/recall_gate.py` was stale against the abandoned contract API (`is_release_allowed`/`get_asset`) and has been fixed to call the real `can_release`/`get_product` methods on the section C `RecallCircuit` deployment.
+
+```
+Contract:          ReleaseGuard (contracts/recall_gate.py), registry = 0xFeBd68B38e06245c7F319C7e9684510D89923880
+Contract Address:  0xE703DAd1c30Bb469A3C0B3d32028D8Ab500AD647
+Deploy Tx Hash:     0x13133f3eed124d165d272d88fbce146b87f724232bce1b04e36e990dc2b6eaae
+Status:            FINALIZED
+```
+
+1. Registered product 1 on the section C `RecallCircuit` (`Gate Co GATE-1`, no notices against it) — `can_release(1)` on RecallCircuit itself returned `true`. A cross-contract read, `ReleaseGuard.can_release(1)`, independently returned `true` from a different contract address, confirmed on-chain.
+2. `ReleaseGuard.record_release(1, <recipient>)` succeeded, tx `0x57cff3c2cfb1a16898e5d56b97ee93e22255eaee5b7b7a511b72cdc5d3434926`; its decoded return value was `1` (its internal `shipment_count` incremented from 0), proving the write path, not just the view path, performs a real cross-contract call and only proceeds when the registry allows it.
+3. Filed and verified the same real CPSC recall (26-791) against the current `RecallCircuit`, registered a second product matching it (`The Blue Cactus Company RWX-RBP02`, product 2), and resolved its assessment to AFFECTED — `RecallCircuit.can_release(2)` → `false`.
+4. `ReleaseGuard.can_release(2)` — a fresh cross-contract read from the `ReleaseGuard` address — also returned `false`.
+5. `ReleaseGuard.record_release(2, <recipient>)` was attempted, tx `0x0e3dbba89fa6ca3c3a0beaf7eaa7b666a640a37874466f85e6166ef966c3d7cf`. Execution reverted; the receipt's decoded revert payload reads **`"RecallCircuit blocked release"`** — the exact `gl.vm.UserError` message from `ReleaseGuard.record_release`, proving the cross-contract call chain genuinely ran `IRecallCircuit(registry).view().can_release(...)` and enforced its result, rather than any local/cached assumption.
+
+This demonstrates that `can_release` is not merely an advisory read for whoever calls `RecallCircuit` directly — a separate, independently deployed contract can gate its own write path on it in real time over a live cross-contract call.
 
 ## C. Authorized-filer allowlist (current contract)
 
@@ -168,5 +187,5 @@ Before product 5 has its own assessment: `can_release(5)` → `false` — fail-c
 - **Source verification is a re-fetch-and-compare consensus check, not cryptographic proof of government authorship.** `verify_source_notice` independently fetches the claimed URL via `gl.nondet.web.render` and has leader+validators agree the claimed text faithfully summarizes what was fetched; it does not verify TLS/domain ownership cryptographically beyond what the GenVM network's own HTTP fetch does, and it does not hold a CPSC-signed artifact. Domain trust is still anchored to the `AUTHORIZED_SOURCE_PREFIXES` allowlist (`cpsc.gov`/`www.cpsc.gov`) hardcoded in the contract, not to an on-chain governance process.
 - **No staking/slashing economy.** Section C adds a single-admin authorized-filer allowlist, demonstrated live, which bounds who may call `file_notice` at all — but the admin is one address set at deployment, not an on-chain governance process, multisig, or stake-weighted mechanism. A compromised or malicious admin could authorize arbitrary filers. A flood of plausible-looking but ultimately-unverified notices from an authorized-but-careless filer was not load-tested, though each one that fails verification still cannot gate any product (see `can_release`, which skips unverified notices).
 - A handful of transaction hashes from the section A run were not retained in the captured terminal output (truncated via `tail`, and the GenLayer explorer at `genlayer-explorer.vercel.app` returned `503 DEPLOYMENT_PAUSED` when checked afterward to recover them). Every transaction without a recorded hash in section A is still verified by its on-chain state read, not by narrative claim alone. Section B hashes were captured directly via `grep` on live command output.
-- `ReleaseGuard` (`contracts/recall_gate.py`) was linted (`genvm-lint check` passes) but not deployed or exercised live in this session.
+- `ReleaseGuard`'s `authority` (the shipper allowed to call `record_release`) is a single address set at deployment, with no transfer or multi-shipper support — consistent with it being a minimal proof-of-integration contract, not a production shipping system.
 - Only `cpsc.gov` was exercised as an authorized source domain; no other regulator domain was tested.
