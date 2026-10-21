@@ -1,11 +1,11 @@
 {
   "project": "RecallCircuit",
   "date": "2026-10-21",
-  "status": "Deployed live on StudioNet 61999: core lifecycle, authoritative source verification, authorized-filer allowlist, and cross-contract ReleaseGuard enforcement all demonstrated with real transactions; CI fixed to run the current test suite; see docs/LIVE_PROOFS.md and BUILD_STATUS.md",
+  "status": "Deployed live on StudioNet 61999 (core lifecycle, source verification, authorized-filer allowlist, cross-contract ReleaseGuard); CI fixed and passing (run 39590792117); see docs/LIVE_PROOFS.md and BUILD_STATUS.md",
   "files": {
     ".github/workflows/ci.yml": "b89a23b01bf7d1008728395640f00d2cd2ece625524ef485ae58e7a0af8da080",
     ".gitignore": "ff3b7ec9e9d964c17e547d47a03a91f757b5a842440e9f44089ebe0d8bc75c3c",
-    "BUILD_STATUS.md": "13692e5681b8e8f9a11660cf035d9331b942132da4dfef0fbc5db30411e2ce74",
+    "BUILD_STATUS.md": "520d857842a4f98a8d35d760c0ed7d2f32cf0b105f331387196f38167b8c73bb",
     "CLAUDE_FINISH_PROMPT.md": "ca3920810a55a9741c98580d21e94d5c6fddef838a43e503125fa161552cc0f5",
     "contracts/recall_circuit.py": "ec85b36e8f46ccdb20e52084e1024bdba6c7cb95aabc4c824ca846bf257ecdb9",
     "contracts/recall_gate.py": "11d877c8c3e06f587b1ca2b74ac5ffa773479fecb8db61094427979c71023463",
@@ -22,7 +22,7 @@
     "README.md": "42ad88b286352d903c34e59f0a56122ce81f9c89c38a7293ed2cc075e9432e7e",
     "requirements-dev.txt": "02b75b1dd4b8611cb9b80c254b74a79ee782c5e2b8f3478a63ef2c9ac4164dbe",
     "scripts/check_rpc.py": "0239de53f5a20856c1925820330496f9289ffb088dc01d4b55e07fa34f366435",
-    "tests/direct/test_recallcircuit_direct.py": "34ad87e9d1bf774c8c48db0983e8da289bf27c586fe1d43eb181fb2d683927cb",
+    "tests/direct/test_recallcircuit_direct.py": "c15377ef330de95af9a2797d812fb92ad701021417d7df650fdb208c2af1febf",
     "tests/test_contract_static.py": "56fc3a244abc09210bea3196c9fb7b4887f571d4e17de01fd72141f6dfcbdede",
     "tests/test_quality.py": "f7d57d6f78cbc7ae04e313a126f3099b2ca92c364d84e0eda1256128fd6da501"
   }

@@ -18,15 +18,23 @@
 
 ## Verified locally this session
 
-- `python -m pytest tests -q` → 22 passed (9 real Direct-Mode GenVM-SDK tests, 6 static/AST honesty tests, 2 quality tests, plus the static-contract parametrized cases).
+- `python -m pytest tests -q` → 29 passed (real Direct-Mode GenVM-SDK tests including the authorized-filer and source-verification coverage, static/AST honesty tests, quality tests, and the static-contract parametrized cases).
 - `genvm-lint check` on both contracts.
+
+## CI
+
+`.github/workflows/ci.yml` previously referenced the deleted `tests/test_protocol.py` and failed outright. Fixed to run `pytest tests` (the full current suite, including Direct Mode) and dropped the `frontend` job — RecallCircuit is a standalone Intelligent Contract with no required frontend to gate a release on. `requirements-dev.txt` now pins `genlayer-test==0.29.2` and `genvm-linter==0.11.1rc2` to match what was verified locally.
+
+A follow-up fix was needed: `genlayer-test`'s Direct Mode resolves an unpinned SDK version via GitHub's `/releases/latest` redirect, which currently points at a release (`v0.3.0-rc7`) with no `genvm-universal` asset — this 404'd in a clean CI runner even though it worked locally (an already-cached older version masked it). Pinned `sdk_version='v0.2.16'` (confirmed to carry the asset) on every `direct_deploy` call in the test suite, verified against a cleared local cache.
+
+**Latest run:** [39590792117](https://github.com/Chinny070/RecallCircuit/actions/runs/39590792117) — both jobs (`genvm-lint`, `python`) passed in full. This is CI, not live StudioNet proof; see `docs/LIVE_PROOFS.md` for that.
 
 ## Not completed / must not be claimed
 
 - **Source verification is re-fetch-and-compare consensus, not cryptographic proof of government authorship.** `verify_source_notice` independently fetches the claimed URL and reaches leader+validator agreement that the claim matches it, binding a sha256 digest — demonstrated live against a real CPSC recall (see `docs/LIVE_PROOFS.md` section B). Trust in the domain itself still rests on a hardcoded allowlist (`AUTHORIZED_SOURCE_PREFIXES`), not an on-chain governance or signature mechanism, and GenVM's own HTTP fetch is trusted for TLS/domain integrity rather than independently re-verified by the contract.
 - **No staking/governance for the filer allowlist** (handoff item 3, partially addressed) — authorization is gated by a single admin address, not a stake-weighted or multisig/governance process; a compromised admin could authorize an unreliable filer. A notice that fails verification still cannot gate a product, which limits but does not eliminate the griefing surface.
 - A few early transaction hashes from the first deployment's lifecycle run were not retained in captured CLI output (truncated before the hash line) and the public GenLayer explorer was returning `503 DEPLOYMENT_PAUSED` when I tried to recover them afterward; every such step is still backed by an on-chain state read, documented in `docs/LIVE_PROOFS.md`, rather than an unverifiable claim. All second-deployment hashes were captured directly.
-- Stress tests, replay/race tests, and a dedicated CI run against the updated test suite were not performed this session.
+- Stress tests and replay/race tests were not performed this session.
 - Real auditor identity, production manufacturer authenticity, and full legal regulatory compliance remain out of scope, as before.
 
 See [`CLAUDE_FINISH_PROMPT.md`](CLAUDE_FINISH_PROMPT.md) for the full original checklist and [`docs/LIVE_PROOFS.md`](docs/LIVE_PROOFS.md) for exact on-chain evidence.
