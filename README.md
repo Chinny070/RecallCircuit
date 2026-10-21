@@ -2,7 +2,7 @@
 
 **Safety-first, notice-scoped product recall adjudication and component quarantine on GenLayer.**
 
-Status: **deployed and live on StudioNet (chain 61999)**, with real multi-validator consensus demonstrated across affected/excluded/remedy/appeal/supersession flows — see [`docs/LIVE_PROOFS.md`](docs/LIVE_PROOFS.md) for the contract address, transaction evidence and reads. Not audited. Notice URL and text are **claimant-supplied**, not independently fetched or authenticated from the regulator by the contract (see Constraints below) — this is not a public-product-safety certification.
+Status: **deployed and live on StudioNet (chain 61999)**, with real multi-validator consensus demonstrated across affected/excluded/remedy/appeal/supersession flows, and real **authoritative source verification** against a genuine, currently-published CPSC recall fetched live via `gl.nondet.web.render` — including a fabricated-claim rejection. See [`docs/LIVE_PROOFS.md`](docs/LIVE_PROOFS.md) for contract addresses, transaction evidence and reads. Not audited. Source verification is a domain-allowlisted re-fetch-and-compare consensus check, not a cryptographic proof of government authorship (see Constraints below) — this is not a public-product-safety certification.
 
 ## Why GenLayer?
 
@@ -11,8 +11,8 @@ Recall notices describe manufacturer, batch, model, manufacturing date, serial r
 ## Core workflow
 
 1. `register_product` creates immutable identity data, controlled by creator; `link_component` adds a bounded, cycle-free dependency edge.
-2. `file_notice` records an untrusted source statement and its alleged origin. `supersede_notice` retires an earlier version without rewriting history.
-3. `open_assessment` places the product in unresolved hold status, even before semantic resolution.
+2. `file_notice` records a claimant source statement against an allowlisted regulator domain. `verify_source_notice` independently re-fetches that URL and reaches leader+validator consensus on whether the claim faithfully matches the live page, binding a sha256 digest; only then is the notice usable. `supersede_notice` retires an earlier version without rewriting history and requires its own re-verification.
+3. `open_assessment` (only against a verified, active notice) places the product in unresolved hold status, even before semantic resolution.
 4. `resolve_assessment` invokes leader and validator LLM judgment on the same original evidence; comparison is over a structured scope outcome. Malformed or unavailable consensus results remain unresolved.
 5. Product owner may `appeal_assessment`; anyone may call `resolve_appeal`. Evidence is treated as untrusted data.
 6. Affected owners can `request_remedy`; anyone can `resolve_remedy`. A validated remedy records `REMEDIATED`, distinct from never being affected.
@@ -24,8 +24,8 @@ Recall notices describe manufacturer, batch, model, manufacturing date, serial r
 
 ## Constraints and deliberate safety limitations
 
-- All notices are initially **unverified uploads**. The contract's LLM classification does **not** authenticate HTTPS provenance, document content, regulator authorization, or update freshness. **Do not deploy as a public clearance engine until an official-source authenticated retrieval/provenance design is added and tested.**
-- A registered notice is globally considered when evaluating the gate. This is conservatively fail-closed but can cause griefing/denial-of-service because notice submissions are permissionless. Production must constrain notice publication with a robust governance/source verification mechanism.
+- All notices start **unverified**; `verify_source_notice` independently re-fetches the claimed URL and reaches leader+validator consensus that the claim matches it, but this is domain-allowlisting plus re-fetch-and-compare, not a cryptographic proof of regulator authorship or a signed CPSC artifact. **Do not market this as a government-certified feed** — see `docs/LIVE_PROOFS.md` section B for what was actually demonstrated against a real CPSC recall.
+- Only a *verified* notice is considered when evaluating the gate; an unverified or verification-failed notice cannot block a product. This limits (but does not eliminate) griefing via permissionless `file_notice` calls against allowlisted domains — there is no stake or independent-acceptance step yet.
 - `can_release` is bounded but currently does linear scans through registered products, notices, and assessments. Profile GenVM transaction limits on StudioNet; replace with indexed per-product/notice pointers if needed.
 - Current statuses are *notice-specific*, not claims of general product safety; consumers must explicitly enforce the gate.
 - No wallet funds, escrow, transfers, automatic physical seizure, or certification promises.

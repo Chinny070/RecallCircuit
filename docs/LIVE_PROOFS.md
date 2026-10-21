@@ -4,10 +4,52 @@ Recorded 2026-10-20/21 against **StudioNet (chain ID 61999, RPC `https://studio.
 
 No step below used a mock, simulator, or fabricated value. Every status, reason string, and vote tally is copied verbatim from a `genlayer write`/`genlayer call`/`genlayer receipt` response. Where a transaction hash was not captured in the terminal output before truncation, that is stated explicitly rather than invented — the corresponding on-chain state read is cited instead as the evidence.
 
-## Deployment
+This document covers two deployments: an initial deployment (section A) demonstrating the core adjudication lifecycle with claimant-supplied notice text, and a second deployment (section B) after adding real authoritative-source verification, demonstrated against a genuine, currently-live CPSC recall fetched over `gl.nondet.web.render`.
+
+## B. Authoritative source verification (current contract)
 
 ```
-Contract:          RecallCircuit (contracts/recall_circuit.py)
+Contract:          RecallCircuit (contracts/recall_circuit.py, with verify_source_notice)
+Contract Address:  0xE8F4522CA39001F2e073788623f0297f6d883963
+Deploy Tx Hash:     0xa9795ea75c725d3b3824cc725b3ee2339303837f6fa897d893380ba1ea6fa38d
+Status:            FINALIZED, 6/6 execution SUCCESS
+```
+
+### B1. Real regulator source, fetched live and independently verified
+
+Used the actual CPSC Recalls REST API (`https://www.saferproducts.gov/RestWebServices/Recall?ProductName=battery&format=json`, documented at `https://www.cpsc.gov/Recalls/CPSC-Recalls-Application-Program-Interface-API-Information`) to find a genuine, currently-published recall: **RecallID 10997, Recall Number 26-791**, "The Blue Cactus Company Reclining Chair Battery Packs Recalled Due to Fire and Burn Hazards; Sold on Amazon," dated 2026-09-24, model `RWX-RBP02`, published at `https://www.cpsc.gov/Recalls/2026/The-Blue-Cactus-Company-Reclining-Chair-Battery-Packs-Recalled-Due-to-Fire-and-Burn-Hazards-Sold-on-Amazon` — confirmed live in-browser before use.
+
+1. `register_product("The Blue Cactus Company","RWX-RBP02","N/A","SERIAL-BC-001","2026-03","sha256:bluecactus001")` → product 1, tx `0x0425c34c8e884cf11e03f38668b1ee1bc2528f036deea0f6b95a24c5008224c8`, 6/6 SUCCESS.
+2. `file_notice("CPSC", <the real cpsc.gov URL above>, "26-791", <claimant text closely paraphrasing the real recall>, "sha256:pending-until-verified")` → notice 1, tx `0x806f5376eb9ca8198b81df95ed44771dd796a6e3c417d2e791918a09d5990c2a`.
+3. `verify_source_notice(1)` — **leader and validators each independently called `gl.nondet.web.render` against the live cpsc.gov URL**, hashed the fetched page, and ran an independent LLM comparison of the live text against the claimed text. Tx `0x6c44777aaaeef539c3606682415f6e9200ff2eb3c145e31eef6db68574f885ce`, `MAJORITY_AGREE`, votes `[AGREE, IDLE, DISAGREE, AGREE, AGREE]` — a genuine validator disagreement, with the majority still holding.
+   `get_notice(1)` afterward:
+   ```json
+   {"id":1,"verified":true,"source_digest":"90a387ec19452d3a7d5340736a686294cf81fba298fce01000ce9fbaecb58f21",
+    "url":"https://www.cpsc.gov/Recalls/2026/The-Blue-Cactus-Company-Reclining-Chair-Battery-Packs-Recalled-Due-to-Fire-and-Burn-Hazards-Sold-on-Amazon"}
+   ```
+   `source_digest` is the real `sha256` hex digest of the live page text as fetched inside GenVM at verification time — not a precomputed or claimant-supplied value.
+4. `open_assessment(1,1)` → assessment 1, tx `0x18378250819b20565ee0af442f6bc53671b3fff91d945264839acb3b843a0828`, 6/6 SUCCESS. `resolve_assessment(1)` → tx `0x49f332ce97bcdf676372f03fdae8bbf2791d999f7cf1f9ea91e29f5f175fe1ed`.
+   ```json
+   {"id":1,"status":1,"reason":"Product matches recalled model RWX-RBP02 from The Blue Cactus Company. Manufacturing date 2026-03 falls within recall period. No evidence of repair/replacement provided."}
+   ```
+   `can_release(1)` → `false`. A genuine, currently-live government recall was fetched over the network from inside the contract, hashed, confirmed to match the on-chain claim by independent consensus, and correctly blocked a matching product — with no mocked web or LLM response anywhere in this sequence.
+
+### B2. Fabricated claim against a real page — rejected
+
+`file_notice("CPSC", <same real cpsc.gov URL>, "FAKE-999", "URGENT FABRICATED CLAIM: this notice falsely states CPSC recalled all toasters nationwide effective immediately, unrelated to the real battery pack recall on this page.", "sha256:forged")` → notice 2, ACCEPTED.
+`verify_source_notice(2)` → ACCEPTED (independent fetch+compare again ran for real).
+`get_notice(2)`:
+```json
+{"id":2,"verified":false,"source_digest":"90a387ec19452d3a7d5340736a686294cf81fba298fce01000ce9fbaecb58f21",
+ "text":"URGENT FABRICATED CLAIM: ..."}
+```
+Note the `source_digest` matches the real page's digest from B1 (same URL, same live content) — the live fetch succeeded, but the independent LLM comparison correctly judged the claimed text to be an unfaithful, fabricated summary of that real content, so `verified` stayed `false`.
+`open_assessment(1, 2)` was then attempted against this unverified notice and reverted (`notice not source-verified`): confirmed by `get_assessment(2)` erroring as unknown — no assessment was ever created from a fabricated claim, even one filed against a real, reachable regulator URL.
+
+## A. Core adjudication lifecycle (initial deployment, claimant-supplied notice text)
+
+```
+Contract:          RecallCircuit (contracts/recall_circuit.py, pre-verify_source_notice)
 Contract Address:  0x8485533fAB15D14F5231B97C51e7EDcE3fF12377
 Deploy Tx Hash:     0x29a431c94f2b67ffc536d700d289d6f26370417c29aa3cc3801a413637743ca0
 Status:            FINALIZED
@@ -16,7 +58,7 @@ Validators:        0x0B50B270Eba5D9B780272C4Cf4720260177e761D, 0xf1C7551292319EE
                     0x6a4179A851B3747A458baD2f089AB2EeFE0eBbAb, 0x5Bbbd7cdD63c0ba7f088038Cb049bDDAbE4F6fd1,
                     0x8a876C3F3a4783Bd123982bcBF3c672dc0239004
 ```
-Confirmed with `genlayer schema 0x8485...2377` — the live on-chain ABI matches the source method set (`register_product`, `link_component`, `file_notice`, `supersede_notice`, `open_assessment`, `resolve_assessment`, `appeal_assessment`, `resolve_appeal`, `request_remedy`, `resolve_remedy`, `get_product`, `get_notice`, `get_assessment`, `can_release`, `gate_explanation`).
+Confirmed with `genlayer schema 0x8485...2377` — the live on-chain ABI matched the source method set at that time. **This deployment predates `verify_source_notice`** — every notice below was claimant-supplied text, not independently fetched, which is exactly the gap closed in section B. It remains below as evidence of the core adjudication/appeal/remedy/propagation/supersession lifecycle, which did not change when source verification was added (the new contract only adds a precondition before `open_assessment`).
 
 ## Lifecycle flows executed on-chain
 
@@ -103,7 +145,8 @@ Before product 5 has its own assessment: `can_release(5)` → `false` — fail-c
 
 ## What this does **not** demonstrate (explicit scope limits)
 
-- **No authoritative CPSC source verification.** `file_notice` was called with claimant-supplied, synthetic text styled on a real recall notice; the contract does not fetch or cryptographically authenticate `cpsc.gov` content in this build (see `docs/STATE_MACHINE.md` Limitations). This gate must not be marketed as proof a notice is government-issued.
-- **No DoS-resistant notice registration / source allowlist.** Any caller can file a notice up to `MAX_NOTICES`; this was not hardened in this session.
-- A handful of transaction hashes from the earlier part of this run were not retained in the captured terminal output (truncated via `tail`, and the GenLayer explorer at `genlayer-explorer.vercel.app` returned `503 DEPLOYMENT_PAUSED` when checked afterward to recover them). Every transaction without a recorded hash above is still verified by its on-chain state read, not by narrative claim alone.
+- **Source verification is a re-fetch-and-compare consensus check, not cryptographic proof of government authorship.** `verify_source_notice` independently fetches the claimed URL via `gl.nondet.web.render` and has leader+validators agree the claimed text faithfully summarizes what was fetched; it does not verify TLS/domain ownership cryptographically beyond what the GenVM network's own HTTP fetch does, and it does not hold a CPSC-signed artifact. Domain trust is still anchored to the `AUTHORIZED_SOURCE_PREFIXES` allowlist (`cpsc.gov`/`www.cpsc.gov`) hardcoded in the contract, not to an on-chain governance process.
+- **No DoS-resistant / staked notice registration.** Any caller can still call `file_notice` for an allowlisted domain up to `MAX_NOTICES`, then attempt `verify_source_notice`; a flood of plausible-looking but ultimately-unverified notices against real URLs was not load-tested, though each one that fails verification cannot gate any product (see `can_release`, which skips unverified notices).
+- A handful of transaction hashes from the section A run were not retained in the captured terminal output (truncated via `tail`, and the GenLayer explorer at `genlayer-explorer.vercel.app` returned `503 DEPLOYMENT_PAUSED` when checked afterward to recover them). Every transaction without a recorded hash in section A is still verified by its on-chain state read, not by narrative claim alone. Section B hashes were captured directly via `grep` on live command output.
 - `ReleaseGuard` (`contracts/recall_gate.py`) was linted (`genvm-lint check` passes) but not deployed or exercised live in this session.
+- Only `cpsc.gov` was exercised as an authorized source domain; no other regulator domain was tested.
