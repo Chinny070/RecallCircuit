@@ -10,7 +10,8 @@ def test_independent_consensus_and_fail_closed_wiring_present():
                       'can_release', 'dependency cycle', 'appeal_assessment', 'resolve_remedy',
                       'gl.nondet.web.render', 'AUTHORIZED_SOURCE_PREFIXES', 'verify_source_notice',
                       'match_shape', 'notice not source-verified', 'authorize_filer',
-                      'sender not an authorized filer'):
+                      'sender not an authorized filer', 'notice already verified',
+                      'assessment already exists', 'evidence must reference the unit serial number'):
         assert fragment in s
 
 

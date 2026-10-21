@@ -2,7 +2,7 @@
 
 **Safety-first, notice-scoped product recall adjudication and component quarantine on GenLayer.**
 
-Status: **deployed and live on StudioNet (chain 61999)**, with real multi-validator consensus demonstrated across affected/excluded/remedy/appeal/supersession flows, and real **authoritative source verification** against a genuine, currently-published CPSC recall fetched live via `gl.nondet.web.render` — including a fabricated-claim rejection. See [`docs/LIVE_PROOFS.md`](docs/LIVE_PROOFS.md) for contract addresses, transaction evidence and reads. Not audited. Source verification is a domain-allowlisted re-fetch-and-compare consensus check, not a cryptographic proof of government authorship (see Constraints below) — this is not a public-product-safety certification.
+Status: **deployed and live on StudioNet (chain 61999)**, with real multi-validator consensus demonstrated across affected/excluded/remedy/appeal/supersession flows, real **authoritative source verification** against a genuine, currently-published CPSC recall fetched live via `gl.nondet.web.render`, and a **security audit remediation** that fixed real fail-open bugs (a notice re-verification could silently lift an established hold; supersession dropped a hold during the replacement window) — see [`docs/LIVE_PROOFS.md`](docs/LIVE_PROOFS.md) section E for every finding and its on-chain proof. Source verification is a domain-allowlisted re-fetch-and-compare consensus check, not a cryptographic proof of government authorship (see Constraints below) — this is not a public-product-safety certification.
 
 ## Why GenLayer?
 
@@ -11,11 +11,11 @@ Recall notices describe manufacturer, batch, model, manufacturing date, serial r
 ## Core workflow
 
 1. `register_product` creates immutable identity data, controlled by creator; `link_component` adds a bounded, cycle-free dependency edge.
-2. `file_notice` — restricted to the admin or an address the admin explicitly `authorize_filer`'d — records a claimant source statement against an allowlisted regulator domain. `verify_source_notice` independently re-fetches that URL and reaches leader+validator consensus on whether the claim faithfully matches the live page, binding a sha256 digest; only then is the notice usable. `supersede_notice` retires an earlier version without rewriting history and requires its own re-verification.
-3. `open_assessment` (only against a verified, active notice) places the product in unresolved hold status, even before semantic resolution.
+2. `file_notice` — restricted to the admin or an address the admin explicitly `authorize_filer`'d — records a claimant source statement against an allowlisted regulator domain. `verify_source_notice` independently re-fetches that URL and reaches leader+validator consensus on whether the claim faithfully matches the live page *and* on the fetched content's digest, binding it; only then is the notice usable, and verification is monotonic (a verified notice can never be re-run and flipped back). `supersede_notice` files a successor without rewriting history or dropping the predecessor's hold — the predecessor only retires once the successor is independently verified.
+3. `open_assessment` (only against a verified, active notice; rejected if a prior assessment already exists for this exact product/notice/revision) places the product in unresolved hold status, even before semantic resolution. Its `evidence_hash` is always the notice's independently-verified digest, never the claimant's unchecked `file_notice` string.
 4. `resolve_assessment` invokes leader and validator LLM judgment on the same original evidence; comparison is over a structured scope outcome. Malformed or unavailable consensus results remain unresolved.
-5. Product owner may `appeal_assessment`; anyone may call `resolve_appeal`. Evidence is treated as untrusted data.
-6. Affected owners can `request_remedy`; anyone can `resolve_remedy`. A validated remedy records `REMEDIATED`, distinct from never being affected.
+5. Product owner may `appeal_assessment` with evidence naming the exact unit serial plus a hash commitment; anyone may call `resolve_appeal`. Evidence is treated as untrusted data.
+6. Affected owners can `request_remedy` under the same unit-bound evidence requirement; anyone can `resolve_remedy`. A validated remedy records `REMEDIATED`, distinct from never being affected.
 7. `can_release(product_id)` traverses parts and requires a current, resolved NOT_AFFECTED or REMEDIATED assessment for **every active registered notice** for **every component**. An absent or uncertain result is never clearance.
 
 ### Result codes

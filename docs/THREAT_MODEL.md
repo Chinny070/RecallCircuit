@@ -2,15 +2,17 @@
 
 | Risk | Existing boundary | Production hardening still needed |
 |---|---|---|
-| Fake government notice | Explicitly *not authenticated*; gate conservatively fails closed | Fetch official allowlisted authority endpoints; prove content/version provenance via validators |
-| Malicious notice spam | All active notices block unknown matches | Source allowlisting, authenticated publisher set, scoped challenge/retirement controls |
-| Leader lies about recall scope | Validators re-evaluate substantive scope and compare critical outcome | Adversarial Direct Mode tests; establish real API semantics |
+| Fake government notice | `verify_source_notice` independently fetches the regulator domain and reaches leader+validator consensus (match **and** digest) that the claim matches the live page before a notice can gate anything; demonstrated live against a real CPSC recall, including a fabricated-claim rejection | Fetch official allowlisted authority endpoints with cryptographic provenance (e.g. a signed CPSC artifact), not just a re-fetch-and-compare check |
+| Malicious notice spam | `file_notice` requires an admin-authorized filer (`authorize_filer`/`revoke_filer`) in addition to the domain allowlist; an unverified notice cannot gate any product | Stake-weighted or multisig/governed filer authorization instead of a single admin address |
+| Leader lies about recall scope | Validators re-evaluate substantive scope and compare critical outcome; for source verification, validators also recompute and compare the digest, not just the match boolean | Adversarial Direct Mode tests exist (`test_validator_rejects_fabricated_digest_even_if_match_agrees`, leader-forgery tests); establish real API semantics further |
 | Groupthink | Validator agreement is not truth | Source citations, corroboration, appeal review, hold-on-uncertainty |
 | Prompt injection | Untrusted notice/product data JSON-encoded and flagged as data | Red-team tests for hostile notices and remedies |
 | Graph cycle | Bounded DFS rejects self-references, duplicates and cycles | Model worst-case gas/GenVM cost; indexed closure if needed |
-| Stale product identity | Parent links increment revision, earlier verdicts fail gate | Authenticated product manufacturing provenance; freezing identity |
-| Source revision | Superseded notice deactivated, new notice needs new evaluation | Notice revision indexing and signed source snapshots |
-| Remedy fraud | Model adjudication requested; default uncertain | Signed shop/vendor attestation, serial binding, evidence authenticity |
-| Race/challenge | Active unresolved appeal blocks release | Direct Mode and live interleaving tests |
-| Storage scan DoS | Hard global limits | Indexed assessments, pagination, benchmark worst case |
+| Stale product identity | Parent links increment revision, earlier verdicts fail gate; `open_assessment` rejects a duplicate for an unchanged revision | Authenticated product manufacturing provenance; freezing identity |
+| Source revision / hold-dropping on supersede | `supersede_notice` no longer deactivates the predecessor; it only retires once the successor is independently verified ("safe replacement activation") — fixed after an audit found the predecessor's hold could be dropped for a window with neither notice gating; demonstrated live both ways (successor verified, successor never verified) | Signed source snapshots; notice revision indexing beyond the single previous_id chain |
+| Verification replay dropping an established hold | `verify_source_notice` is monotonic — once verified, a notice can never be re-run and flipped back to unverified, closing a fail-open bug found by audit where a transient fetch failure could silently lift a hold | — (closed) |
+| Remedy/appeal fraud | Independent model re-adjudication requested on resubmitted evidence; evidence must name the unit's exact serial number and carry a mandatory hash commitment (`get_appeal`/`get_remedy`); default uncertain | Signed shop/vendor attestation; the contract never fetches or checks what the evidence_hash commitment actually points to |
+| Assessment/evidence confusion | `Assessment.evidence_hash` is bound to the notice's independently-verified `source_digest`, never the claimant's unverified `file_notice` `source_hash` — fixed after an audit found the two were conflated | — (closed) |
+| Race/challenge | Active unresolved appeal blocks release; `open_assessment` rejects a duplicate for the same (product, notice, revision), so the only re-challenge path is the bounded, single-shot `appeal_assessment` lifecycle | Direct Mode and live interleaving tests for appeal/remedy races specifically |
+| Storage scan DoS | Hard global limits, now including `MAX_ASSESSMENTS`/`MAX_APPEALS`/`MAX_REMEDIES` | Indexed assessments, pagination, benchmark worst case |
 | Misuse as legal safety certification | Explicit disclaimers, notice-scoped interface | Independent external compliance review |

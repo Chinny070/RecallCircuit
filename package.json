@@ -3,5 +3,5 @@
   "version": "0.1.0",
   "private": true,
   "scripts": { "gl": "genlayer" },
-  "devDependencies": { "genlayer": "0.39.1" }
+  "devDependencies": { "genlayer": "0.39.2" }
 }

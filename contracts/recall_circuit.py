@@ -12,6 +12,7 @@ import hashlib
 PENDING, AFFECTED, NOT_AFFECTED, UNCERTAIN, SUPERSEDED, REMEDIATED = 0, 1, 2, 3, 4, 5
 OPEN, RESOLVED, CANCELLED = 0, 1, 2
 MAX_TEXT, MAX_PRODUCTS, MAX_LINKS, MAX_NOTICES, MAX_PAGE = 1800, 500, 12, 100, 6000
+MAX_ASSESSMENTS, MAX_APPEALS, MAX_REMEDIES = 2000, 500, 500
 
 # Regulator domains this contract will treat as a candidate authoritative source.
 # A notice may only be filed against one of these; it still starts UNVERIFIED
@@ -68,6 +69,7 @@ class Appeal:
     assessment_id: u256
     appellant: Address
     evidence: str
+    evidence_hash: str
     status: u8
     outcome: u8
 
@@ -77,6 +79,7 @@ class Remedy:
     assessment_id: u256
     applicant: Address
     evidence: str
+    evidence_hash: str
     status: u8
     reason: str
 
@@ -323,8 +326,16 @@ class RecallCircuit(gl.Contract):
         This is a leader+validator consensus check, NOT a cryptographic proof of
         regulator authorship. A notice that fails stays UNVERIFIED and cannot be
         used to open a new assessment (see open_assessment).
+
+        Verification is monotonic: once a notice is verified it can never be
+        flipped back to unverified by a later call (e.g. a transient fetch
+        failure or an edited live page). Re-running this on an already-verified
+        notice would otherwise let anyone silently lift an established hold on
+        affected inventory by forcing can_release to stop counting that notice
+        -- that is the exact fail-open bug this guard closes.
         """
         n = self._notice(notice_id)
+        if n.verified: raise gl.vm.UserError('notice already verified')
         if not any(str(n.source_url).startswith(p) for p in AUTHORIZED_SOURCE_PREFIXES):
             raise gl.vm.UserError('source domain not authorized')
 
@@ -334,16 +345,44 @@ class RecallCircuit(gl.Contract):
         def validator(leader_result):
             if not isinstance(leader_result, gl.vm.Return): return False
             proposed = leader_result.calldata
-            if not isinstance(proposed, dict) or 'match' not in proposed: return False
+            # Full expected shape required -- no permissive partial match. The
+            # validator independently recomputes its own digest from its own
+            # fetch and requires it to agree with the leader's; a leader cannot
+            # bind a fabricated digest just by getting the match verdict right.
+            if not isinstance(proposed, dict) or set(proposed) != {'match', 'reason', 'digest'}:
+                return False
+            if not isinstance(proposed['match'], bool) or not isinstance(proposed['digest'], str):
+                return False
             observed = self._fetch_and_match(n)
-            return bool(observed['match']) == bool(proposed['match'])
+            return observed['match'] == proposed['match'] and observed['digest'] == proposed['digest']
 
         result = gl.vm.run_nondet_unsafe(leader, validator)
-        n.verified = bool(result.get('match', False)) if isinstance(result, dict) else False
-        n.source_digest = str(result.get('digest', '')) if isinstance(result, dict) else ''
+        if not isinstance(result, dict) or set(result) != {'match', 'reason', 'digest'}:
+            return  # malformed consensus result; leave unverified (fail closed)
+        if not result['match']:
+            return  # independently confirmed non-match; leave unverified
+
+        n.verified = True
+        n.source_digest = str(result['digest'])
+        # Safe replacement activation: only now, with the successor independently
+        # verified, does the prior notice in the chain retire. Until this point
+        # supersede_notice leaves the old notice active so its hold is never
+        # dropped for a window where neither notice gates the product.
+        if int(n.previous_id) != 0:
+            previous = self.notices.get(n.previous_id)
+            if previous is not None:
+                previous.active = False
 
     @gl.public.write
     def supersede_notice(self, old_id: u256, text: str, source_hash: str) -> u256:
+        """File a successor notice without dropping the predecessor's hold.
+
+        The predecessor stays active (continues to gate can_release) until the
+        successor is independently verified via verify_source_notice -- see the
+        'safe replacement activation' step there. If the successor is never
+        verified, the predecessor keeps gating indefinitely, which is the safe
+        failure mode.
+        """
         old = self._notice(old_id)
         if old.creator != gl.message.sender_address or not old.active:
             raise gl.vm.UserError('creator and active notice required')
@@ -351,7 +390,6 @@ class RecallCircuit(gl.Contract):
         new = self._notice(new_id)
         new.version = u32(int(old.version)+1)
         new.previous_id = old_id
-        old.active = False
         return new_id
 
     def _evaluate(self, notice: Notice, product: Product, question: str, additional: str) -> dict:
@@ -376,16 +414,37 @@ class RecallCircuit(gl.Contract):
 
     @gl.public.write
     def open_assessment(self, product_id: u256, notice_id: u256) -> u256:
+        """Open exactly one assessment per (product, notice, current revision).
+
+        A duplicate open_assessment for the same triple is rejected: the only
+        sanctioned way to re-challenge an already-opened assessment is through
+        appeal_assessment (a bounded, single-shot, auditable lifecycle), not by
+        spamming fresh PENDING assessments hoping for a different leader/
+        validator outcome.
+        """
         p,n = self._product(product_id),self._notice(notice_id)
         if not n.active: raise gl.vm.UserError('superseded notice')
         if not n.verified: raise gl.vm.UserError('notice not source-verified')
+        if int(self.next_assessment) > MAX_ASSESSMENTS: raise gl.vm.UserError('assessment capacity')
+        for existing_id in range(1, int(self.next_assessment)):
+            existing = self.assessments.get(u256(existing_id))
+            if (existing is not None and int(existing.product_id) == int(product_id)
+                    and int(existing.notice_id) == int(notice_id)
+                    and int(existing.product_revision) == int(p.revision)):
+                raise gl.vm.UserError('assessment already exists for this product/notice/revision')
         aid = self.next_assessment
         self.next_assessment = u256(int(aid)+1)
         a = self.assessments.get_or_insert_default(aid)
         a.product_id,a.notice_id,a.product_revision = product_id,notice_id,p.revision
         a.status = u8(UNCERTAIN)
         a.reason = 'Awaiting independent evaluation'
-        a.evidence_hash = str(n.source_hash)
+        # Authoritative evidence binding: the notice's own claimant-supplied
+        # source_hash is never independently checked and must not be recorded
+        # as evidence. source_digest is only ever set after an independent
+        # leader+validator fetch-and-compare (verify_source_notice), which is
+        # required before a notice can reach this point -- it is the
+        # authoritative value to bind the assessment to.
+        a.evidence_hash = str(n.source_digest)
         a.generation = u32(1)
         a.appealed = False
         a.pending = True
@@ -411,17 +470,38 @@ class RecallCircuit(gl.Contract):
         a.pending = False
         Decision(assessment_id,a.status).emit()
 
+    def _bind_unit_evidence(self, p: Product, evidence: str, evidence_hash: str) -> tuple:
+        """Require evidence to be unit-bound and carry an independently checkable commitment.
+
+        'Unit-bound' here means the evidence text must name this exact product's
+        serial number -- generic or copy-pasted evidence that doesn't reference
+        the specific unit is rejected outright, before any LLM judgment runs.
+        evidence_hash is a required, non-empty commitment (e.g. a digest of an
+        attached document/photo) the submitter is bound to; this contract does
+        not fetch or verify that artifact's content -- it is an auditable
+        commitment, not a cryptographic authenticity proof, and must not be
+        represented as more than that.
+        """
+        evidence = bounded(evidence)
+        evidence_hash = bounded(evidence_hash, 100)
+        if str(p.serial) not in evidence:
+            raise gl.vm.UserError('evidence must reference the unit serial number')
+        return evidence, evidence_hash
+
     @gl.public.write
-    def appeal_assessment(self, assessment_id: u256, evidence: str) -> u256:
+    def appeal_assessment(self, assessment_id: u256, evidence: str, evidence_hash: str) -> u256:
         a = self._assessment(assessment_id)
         p = self._product(a.product_id)
         self._owner(p)
         if a.pending or a.appealed: raise gl.vm.UserError('cannot appeal')
+        if int(self.next_appeal) > MAX_APPEALS: raise gl.vm.UserError('appeal capacity')
+        evidence, evidence_hash = self._bind_unit_evidence(p, evidence, evidence_hash)
         rid = self.next_appeal
         self.next_appeal = u256(int(rid)+1)
         appeal = self.appeals.get_or_insert_default(rid)
         appeal.assessment_id,appeal.appellant = assessment_id,gl.message.sender_address
-        appeal.evidence = bounded(evidence)
+        appeal.evidence = evidence
+        appeal.evidence_hash = evidence_hash
         appeal.status = u8(OPEN)
         appeal.outcome = u8(UNCERTAIN)
         a.appealed = True
@@ -445,15 +525,19 @@ class RecallCircuit(gl.Contract):
         Decision(record.assessment_id,a.status).emit()
 
     @gl.public.write
-    def request_remedy(self, assessment_id: u256, evidence: str) -> u256:
+    def request_remedy(self, assessment_id: u256, evidence: str, evidence_hash: str) -> u256:
         a = self._assessment(assessment_id)
-        self._owner(self._product(a.product_id))
+        p = self._product(a.product_id)
+        self._owner(p)
         if a.pending or int(a.status) != AFFECTED: raise gl.vm.UserError('no active affected decision')
+        if int(self.next_remedy) > MAX_REMEDIES: raise gl.vm.UserError('remedy capacity')
+        evidence, evidence_hash = self._bind_unit_evidence(p, evidence, evidence_hash)
         rid = self.next_remedy
         self.next_remedy = u256(int(rid)+1)
         obj = self.remedies.get_or_insert_default(rid)
         obj.assessment_id, obj.applicant = assessment_id,gl.message.sender_address
-        obj.evidence = bounded(evidence)
+        obj.evidence = evidence
+        obj.evidence_hash = evidence_hash
         obj.status = u8(OPEN)
         obj.reason = 'pending remedy verification'
         return rid
@@ -498,6 +582,22 @@ class RecallCircuit(gl.Contract):
         return {'id':int(assessment_id),'product_id':int(a.product_id),'notice_id':int(a.notice_id),
                 'status':int(a.status),'pending':bool(a.pending),'appealed':bool(a.appealed),
                 'generation':int(a.generation),'reason':str(a.reason),'evidence_hash':str(a.evidence_hash)}
+
+    @gl.public.view
+    def get_appeal(self, appeal_id: u256) -> dict:
+        ap = self.appeals.get(appeal_id)
+        if ap is None: raise gl.vm.UserError('unknown appeal')
+        return {'id':int(appeal_id),'assessment_id':int(ap.assessment_id),'appellant':str(ap.appellant),
+                'evidence':str(ap.evidence),'evidence_hash':str(ap.evidence_hash),
+                'status':int(ap.status),'outcome':int(ap.outcome)}
+
+    @gl.public.view
+    def get_remedy(self, remedy_id: u256) -> dict:
+        r = self.remedies.get(remedy_id)
+        if r is None: raise gl.vm.UserError('unknown remedy')
+        return {'id':int(remedy_id),'assessment_id':int(r.assessment_id),'applicant':str(r.applicant),
+                'evidence':str(r.evidence),'evidence_hash':str(r.evidence_hash),
+                'status':int(r.status),'reason':str(r.reason)}
 
     @gl.public.view
     def can_release(self, product_id: u256) -> bool:

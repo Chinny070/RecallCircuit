@@ -4,7 +4,62 @@ Recorded 2026-10-20/21 against **StudioNet (chain ID 61999, RPC `https://studio.
 
 No step below used a mock, simulator, or fabricated value. Every status, reason string, and vote tally is copied verbatim from a `genlayer write`/`genlayer call`/`genlayer receipt` response. Where a transaction hash was not captured in the terminal output before truncation, that is stated explicitly rather than invented — the corresponding on-chain state read is cited instead as the evidence.
 
-This document covers four deployments: an initial deployment (section A) demonstrating the core adjudication lifecycle with claimant-supplied notice text, a second deployment (section B) after adding real authoritative-source verification, demonstrated against a genuine, currently-live CPSC recall fetched over `gl.nondet.web.render`, a third deployment (section C) after adding an admin-gated authorized-filer allowlist to bound notice-filing DoS/griefing, and a standalone `ReleaseGuard` consumer contract (section D) proving the gate is enforceable cross-contract, not just by direct calls to RecallCircuit.
+This document covers five deployments: an initial deployment (section A) demonstrating the core adjudication lifecycle with claimant-supplied notice text, a second deployment (section B) after adding real authoritative-source verification, demonstrated against a genuine, currently-live CPSC recall fetched over `gl.nondet.web.render`, a third deployment (section C) after adding an admin-gated authorized-filer allowlist to bound notice-filing DoS/griefing, a standalone `ReleaseGuard` consumer contract (section D) proving the gate is enforceable cross-contract, and a fifth deployment (section E) after a security audit identified and fixed several real fail-open gaps in the logic above.
+
+## E. Security audit remediation — fail-closed invariants, consensus binding, evidence binding (current contract)
+
+An audit of the section C/D contract identified concrete fail-open bugs, not just missing features. Each was fixed and is demonstrated live below against the **real CPSC recall** used throughout this document.
+
+```
+Contract Address:  0x6946f6912A3cbE14d0C1A8b793bbF1F6C7342b84 (RecallCircuit)
+Deploy Tx Hash:     0xb8f5db59c740b09eb23f745212c2c90317d31558c4410cbcb58ada399d40bb7c
+Status:            FINALIZED, 6/6 execution SUCCESS
+ReleaseGuard:      0x251367Ba0388dE3bD9e2783C6d18B6354eE349Cc, registry = the address above
+ReleaseGuard Tx:    0x81a4fb12aeff157d8971cf5a45e4908909e4c9c1ed8fbbc44c65fd6942b9b069
+```
+
+### E1. Fail-open bug: re-verification could silently lift an established hold
+
+**The bug:** `verify_source_notice` previously set `n.verified = bool(result['match'])` unconditionally on every call. `can_release` skips any notice that is not `verified`. So calling `verify_source_notice` a second time on an *already-verified, currently-gating* notice -- say, because the live page was temporarily unreachable, or had been edited -- would flip `verified` back to `False` and silently stop that notice from blocking an affected product, with no owner action and no new assessment. **Fix:** verification is now monotonic — `verify_source_notice` refuses outright if the notice is already verified.
+
+Live: registered product 1 (`The Blue Cactus Company RWX-RBP02`, serial `SERIAL-AUDIT1`), filed and verified notice 1 against the real CPSC URL (tx `0xbad4ef0f...`, `0xbcbe94fb...`), resolved assessment 1 to AFFECTED (tx `0xc207cb31f7a703fe651aa8c439ed78b25650d14d031c0636257feeb2b9cb6677`). Calling `verify_source_notice(1)` again reverted on-chain with the decoded payload **`"notice already verified"`** (tx_id `0x5efa0f5ad575f8a681258c98f14341c5275f7aaba9c360b8fe578dfa856e7a1a`).
+
+### E2. Fail-open bug: supersession dropped the hold during the replacement window
+
+**The bug:** `supersede_notice` immediately set the predecessor's `active = False`, while the successor notice starts `verified = False`. `can_release` requires a notice to be both `active` and `verified` to count at all — so for any window between calling `supersede_notice` and the successor being independently verified, **neither** notice gated the product, even though it had never been cleared. **Fix:** `supersede_notice` no longer deactivates the predecessor. The predecessor is only retired, as a side effect of `verify_source_notice` succeeding on its successor ("safe replacement activation"). If the successor is never verified, the predecessor gates forever — the safe failure mode.
+
+Live, demonstrated both ways against the real recall:
+- Called `supersede_notice(1, ...)` with text that fabricated a non-existent "batch N2" (tx `0x1fea5ba79ad82fbb9320ea6190a44f69f38a55b6dab1e601d63253567b3980ad`) → notice 2. `get_notice(1)['active']` read back `true` immediately after — the predecessor's hold was never dropped.
+- `verify_source_notice(2)` (tx `0x7f63e42cc4867fe3ee30220a86e07538452d90e41e03bf581cf80439acc1e94e`) independently re-fetched the real page and correctly judged the fabricated "batch N2" claim a **non-match** — `get_notice(2)['verified']` read back `false`, and `get_notice(1)['active']` stayed `true`. This was not staged: the fabricated detail genuinely isn't on the live page, so the real LLM comparison genuinely rejected it.
+- `supersede_notice(1, ...)` again, this time with text faithfully matching the real page (tx `0x188a391b5b9d2fff733a92a0e4c71207e742c5cb678a021289be4d7e38ee37b3`) → notice 3. `verify_source_notice(3)` (tx `0xabc4675f22d1bdcd3be6e66fd4a5bbadc0889f5aa98371f8ee14a371bb10db43`) succeeded — and **only at that point**, `get_notice(1)['active']` flipped to `false` while `get_notice(3)['active']` read `true`.
+
+### E3. Consensus binding: validator must recompute the digest, not just the match verdict
+
+**The bug:** the validator closure only compared `observed['match'] == proposed['match']`, never the digest. A dishonest leader could report a correct `match` boolean while binding an arbitrary `digest` string on-chain — nothing checked it against what validators actually fetched. **Fix:** the validator now requires the full expected shape (`{'match','reason','digest'}`, with `match` strictly `bool` and `digest` strictly `str` — no partial-match or permissive coercion) and requires its own independently-fetched `digest` to equal the leader's. Demonstrated in Direct Mode (`test_validator_rejects_fabricated_digest_even_if_match_agrees`): changing the live page's content between the leader's fetch and the validator's re-fetch causes `run_validator()` to return `False` even when both fetches still agree on `match=True`. This specific adversarial timing isn't reproducible against a real, currently-static StudioNet page, so it is Direct Mode evidence, not live-chain evidence — the live chain evidence above (E1/E2) already shows the real digest (`90a387ec...`) being bound to the real page content.
+
+### E4. Authoritative evidence binding: assessments no longer cite unverified claimant text
+
+**The bug:** `open_assessment` set `a.evidence_hash = str(n.source_hash)` — the claimant's own, never-independently-checked string from `file_notice` — instead of the notice's actual verified `source_digest`. **Fix:** `a.evidence_hash` is now always `n.source_digest`, which by construction only exists after an independent leader+validator fetch succeeded.
+
+Live: `get_assessment(1)['evidence_hash']` read back `90a387ec19452d3a7d5340736a686294cf81fba298fce01000ce9fbaecb58f21` — the real digest of the live CPSC page — not `"sha256:claimant-unverified"`, the string that was actually passed to `file_notice`.
+
+### E5. Unit-bound, independently-committed appeal/remedy evidence
+
+**The bug:** `appeal_assessment`/`request_remedy` accepted any free-text evidence with no binding to the specific unit and no commitment artifact. **Fix:** both now require (a) the evidence text to literally reference the product's serial number, rejected outright before any LLM judgment runs, and (b) a mandatory, non-empty `evidence_hash` commitment, recorded on-chain (`get_appeal`/`get_remedy`).
+
+Live: `appeal_assessment(1, "This unit was never affected, please clear it.", "evidence-hash-1")` reverted with the decoded payload **`"evidence must reference the unit serial number"`** (tx `0xeebbc767ef8bdc677b0de73d962f65b959b65bb4f941e8c9c873918bd97f5e3e`). Filing again with `"Unit SERIAL-AUDIT1 was manufactured in a pre-production test lot..."` succeeded (tx `0xee263001d84af1d5de6e113ad5618d47dbbce95b36c695486e5e2c59aff64914`); `resolve_appeal(1)` (tx `0xcfa3f36c1d8f8acd81c6ee2982ecd8b723fdf87478281f97181bb5a8ccfd4eb4`) independently re-ran the scope classification with that evidence and cleared the unit to NOT_AFFECTED; `get_appeal(1)` reads back `evidence_hash: "sha256:appeal-evidence-doc-1"`, the real commitment supplied. Cross-contract `ReleaseGuard.can_release(1)` on the new deployment read back `true` immediately after, confirming the clearance propagates.
+
+### E6. Assessment uniqueness: no retry-spam, defined challenge lifecycle
+
+**The bug:** `open_assessment` had no uniqueness check and no capacity bound, so the same (product, notice, revision) triple could be assessed arbitrarily many times, and `can_release`'s nested scan over all assessments had no bound on their count. **Fix:** `open_assessment` now rejects a duplicate for the same (product, notice, revision); `MAX_ASSESSMENTS`/`MAX_APPEALS`/`MAX_REMEDIES` bound the respective counters. The only sanctioned way to re-challenge an assessment is `appeal_assessment`, a bounded, single-shot, auditable lifecycle (`a.appealed` already prevented a second appeal on the same assessment).
+
+Live: `open_assessment(1, 1)` a second time, after the first already existed, reverted with the decoded payload **`"assessment already exists for this product/notice/revision"`** (tx `0x44f5b9115b40833f35d72923658e3c4ad611b858c4d9d3fca3427340c8de8f8e`); `get_assessment(2)` confirmed no second assessment was created.
+
+### Not addressed by this remediation (explicit scope limits)
+
+- Appeal/remedy evidence commitments (`evidence_hash`) are auditable on-chain commitments, not independently fetched or cryptographically verified artifacts — the contract does not know whether the hash corresponds to anything real, only that the submitter committed to a specific value alongside unit-bound text.
+- The authorized-filer allowlist (section C) and the regulator domain allowlist remain single-admin/hardcoded, as documented there; this remediation did not add staking or governance.
+- Stress, replay, and race tests beyond the specific hostile transitions above were not performed.
 
 ## D. ReleaseGuard — cross-contract gate enforcement (live)
 
