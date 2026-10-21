@@ -10,6 +10,7 @@ integration path used for live consensus evidence.
 import json
 
 CONTRACT = 'contracts/recall_circuit.py'
+SDK_VERSION = 'v0.2.16'  # pinned: latest genvm release lacks a genvm-universal asset as of this writing
 URL = 'https://www.cpsc.gov/Recalls/2026/example-battery-recall'
 LIVE_PAGE = ('CPSC Recall Number 26-500. Example Co BAT-1 batteries from batch B1 '
              'must be replaced. Other batches are not recalled.')
@@ -31,7 +32,7 @@ def mock_happy_source(direct_vm):
 
 def deploy_and_authorize(direct_deploy, direct_vm, filer):
     """Deploy (deployer becomes admin) then authorize `filer` to call file_notice."""
-    contract = direct_deploy(CONTRACT)
+    contract = direct_deploy(CONTRACT, sdk_version=SDK_VERSION)
     contract.authorize_filer(filer)
     direct_vm.sender = filer
     return contract
@@ -54,14 +55,14 @@ def setup(direct_vm, direct_deploy, direct_bob):
 
 
 def test_unauthorized_filer_cannot_file_notice(direct_vm, direct_deploy, direct_bob):
-    contract = direct_deploy(CONTRACT)  # deployer is admin; bob is never authorized
+    contract = direct_deploy(CONTRACT, sdk_version=SDK_VERSION)  # deployer is admin; bob is never authorized
     direct_vm.sender = direct_bob
     with direct_vm.expect_revert('sender not an authorized filer'):
         contract.file_notice('CPSC', URL, '26-500', NOTICE_TEXT, 'h')
 
 
 def test_admin_can_revoke_filer(direct_vm, direct_deploy, direct_bob):
-    contract = direct_deploy(CONTRACT)
+    contract = direct_deploy(CONTRACT, sdk_version=SDK_VERSION)
     contract.authorize_filer(direct_bob)
     assert contract.is_authorized_filer(direct_bob) is True
     contract.revoke_filer(direct_bob)
@@ -72,7 +73,7 @@ def test_admin_can_revoke_filer(direct_vm, direct_deploy, direct_bob):
 
 
 def test_non_admin_cannot_authorize_filers(direct_vm, direct_deploy, direct_bob, direct_charlie):
-    contract = direct_deploy(CONTRACT)
+    contract = direct_deploy(CONTRACT, sdk_version=SDK_VERSION)
     direct_vm.sender = direct_bob
     with direct_vm.expect_revert('admin only'):
         contract.authorize_filer(direct_charlie)
