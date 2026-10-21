@@ -9,7 +9,8 @@ def test_independent_consensus_and_fail_closed_wiring_present():
     for fragment in ('gl.nondet.exec_prompt', 'gl.vm.run_nondet_unsafe', 'verdict_shape',
                       'can_release', 'dependency cycle', 'appeal_assessment', 'resolve_remedy',
                       'gl.nondet.web.render', 'AUTHORIZED_SOURCE_PREFIXES', 'verify_source_notice',
-                      'match_shape', 'notice not source-verified'):
+                      'match_shape', 'notice not source-verified', 'authorize_filer',
+                      'sender not an authorized filer'):
         assert fragment in s
 
 

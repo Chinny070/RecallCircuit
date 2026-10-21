@@ -1,16 +1,16 @@
 {
   "project": "RecallCircuit",
   "date": "2026-10-21",
-  "status": "Deployed and live on StudioNet 61999 with real authoritative source verification against a genuine CPSC recall; see docs/LIVE_PROOFS.md and BUILD_STATUS.md",
+  "status": "Deployed and live on StudioNet 61999 with authoritative source verification and an admin-gated authorized-filer allowlist, both demonstrated live; see docs/LIVE_PROOFS.md and BUILD_STATUS.md",
   "files": {
     ".github/workflows/ci.yml": "ef6e5a9c2550bb4b03f02adb6d0fdb935ae3dfc43203ee27185b09fcfd5b2348",
     ".gitignore": "ff3b7ec9e9d964c17e547d47a03a91f757b5a842440e9f44089ebe0d8bc75c3c",
-    "BUILD_STATUS.md": "c65b4ef9159b323a32e67bd1a483ab659183ad9c0e0d243eaacfa2dea2e3dce8",
+    "BUILD_STATUS.md": "a879e7fc87a92e72fafb3e0a9f80f3b4db962ed9d77da88f631470e804c7e87e",
     "CLAUDE_FINISH_PROMPT.md": "ca3920810a55a9741c98580d21e94d5c6fddef838a43e503125fa161552cc0f5",
-    "contracts/recall_circuit.py": "35b8c19c067be1bfcc9d2d91429539f005edfc3ebaa6d271d64f4ca69a3121e2",
+    "contracts/recall_circuit.py": "ec85b36e8f46ccdb20e52084e1024bdba6c7cb95aabc4c824ca846bf257ecdb9",
     "contracts/recall_gate.py": "2afda83cf57447e37289c7ebca36faa37083407b1eb3c5fb11e049096294f176",
-    "docs/LIVE_PROOFS.md": "ede2e522c280b667a00cdfa9f503fc8f1d6f9fd5440f2e7842f8aedd7fd06c34",
-    "docs/STATE_MACHINE.md": "99693a53376636e72c551d265dc3e900f05de5f06ed206dd5b7bc9c9f990d27d",
+    "docs/LIVE_PROOFS.md": "888e8a40b7793f2654319c292134136f90bd8e5e1b545b7fe0abd7ba7eb1f3bb",
+    "docs/STATE_MACHINE.md": "e1713b74ca967b88c6076f694c3c83e9b3a921c970100345d6cd8aa97054bfd4",
     "docs/THREAT_MODEL.md": "d00e852b38c8e45a03bebb8273acc758636ed835909a221204498277fbb89a63",
     "frontend/.env.example": "aa9b6f97abaa79af271487f74f29a8ee575a811565460217e053c6d3a44ed135",
     "frontend/index.html": "eb351d5abefad07928333437ca20e9a1176b8a370f1c7f9d9942b6d7f98f092e",
@@ -19,12 +19,12 @@
     "frontend/src/styles.css": "2a438a9ccb2338b2b552782484e2bb4396fc89116cd30e5263e939a638720d60",
     "gltest.config.yaml": "ea8cf04797f7c55637d8ba602a452c38df5419bbc41c057509b402896d61206d",
     "package.json": "b60f7ed7aa4561988b306debbbbdeeb098ed6cbeaa8f723862a476fa4ed2c90b",
-    "README.md": "e97222c3be1d8dbc5c7ff64cd07d7c3828799c0bc4a60f408c2751b54193f6fe",
+    "README.md": "9489558c3f3c1965c13049f66bcf0fd8046ff9eb661bdee9ad6c4d3d789cf955",
     "requirements-dev.txt": "50637ce7cc0a81ef10227e01ad9eff02e8ab292f6caef832853c2e9c73a70db9",
     "requirements-test.txt": "dd5a5ae541f4bd1370daa649106c12f2d5ad3f70c5182762378fa9a19c652a8f",
     "scripts/check_rpc.py": "0239de53f5a20856c1925820330496f9289ffb088dc01d4b55e07fa34f366435",
-    "tests/direct/test_recallcircuit_direct.py": "6ee1699e2b1c29580c5cb3a2722477c5edd0a93741f25dab612a8f35aed13299",
+    "tests/direct/test_recallcircuit_direct.py": "34ad87e9d1bf774c8c48db0983e8da289bf27c586fe1d43eb181fb2d683927cb",
     "tests/test_contract_static.py": "56fc3a244abc09210bea3196c9fb7b4887f571d4e17de01fd72141f6dfcbdede",
-    "tests/test_quality.py": "e2ef0c47a0674e65952184a9ab02964acceffad0f7c240b62e9d6c4f006ad01e"
+    "tests/test_quality.py": "f7d57d6f78cbc7ae04e313a126f3099b2ca92c364d84e0eda1256128fd6da501"
   }
 }

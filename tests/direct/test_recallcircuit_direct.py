@@ -29,6 +29,14 @@ def mock_happy_source(direct_vm):
     direct_vm.mock_llm(SOURCE_PATTERN, MATCH)
 
 
+def deploy_and_authorize(direct_deploy, direct_vm, filer):
+    """Deploy (deployer becomes admin) then authorize `filer` to call file_notice."""
+    contract = direct_deploy(CONTRACT)
+    contract.authorize_filer(filer)
+    direct_vm.sender = filer
+    return contract
+
+
 def file_and_verify(contract, direct_vm, text=NOTICE_TEXT, url=URL):
     nid = contract.file_notice('CPSC', url, '26-500', text, 'notice-hash-1')
     contract.verify_source_notice(nid)
@@ -38,17 +46,40 @@ def file_and_verify(contract, direct_vm, text=NOTICE_TEXT, url=URL):
 def setup(direct_vm, direct_deploy, direct_bob):
     mock_happy_source(direct_vm)
     direct_vm.mock_llm(SCOPE_PATTERN, AFFECTED)
-    contract = direct_deploy(CONTRACT)
-    direct_vm.sender = direct_bob
+    contract = deploy_and_authorize(direct_deploy, direct_vm, direct_bob)
     pid = contract.register_product('Example Co', 'BAT-1', 'B1', 'SERIAL-001', '2026-01', 'hash-1')
     nid = file_and_verify(contract, direct_vm)
     aid = contract.open_assessment(pid, nid)
     return contract, pid, nid, aid
 
 
-def test_unauthorized_domain_rejected(direct_vm, direct_deploy, direct_bob):
+def test_unauthorized_filer_cannot_file_notice(direct_vm, direct_deploy, direct_bob):
+    contract = direct_deploy(CONTRACT)  # deployer is admin; bob is never authorized
+    direct_vm.sender = direct_bob
+    with direct_vm.expect_revert('sender not an authorized filer'):
+        contract.file_notice('CPSC', URL, '26-500', NOTICE_TEXT, 'h')
+
+
+def test_admin_can_revoke_filer(direct_vm, direct_deploy, direct_bob):
+    contract = direct_deploy(CONTRACT)
+    contract.authorize_filer(direct_bob)
+    assert contract.is_authorized_filer(direct_bob) is True
+    contract.revoke_filer(direct_bob)
+    assert contract.is_authorized_filer(direct_bob) is False
+    direct_vm.sender = direct_bob
+    with direct_vm.expect_revert('sender not an authorized filer'):
+        contract.file_notice('CPSC', URL, '26-500', NOTICE_TEXT, 'h')
+
+
+def test_non_admin_cannot_authorize_filers(direct_vm, direct_deploy, direct_bob, direct_charlie):
     contract = direct_deploy(CONTRACT)
     direct_vm.sender = direct_bob
+    with direct_vm.expect_revert('admin only'):
+        contract.authorize_filer(direct_charlie)
+
+
+def test_unauthorized_domain_rejected(direct_vm, direct_deploy, direct_bob):
+    contract = deploy_and_authorize(direct_deploy, direct_vm, direct_bob)
     with direct_vm.expect_revert('source domain not authorized'):
         contract.file_notice('CPSC', 'https://not-cpsc.example/recall', '26-500', NOTICE_TEXT, 'h')
 
@@ -56,8 +87,7 @@ def test_unauthorized_domain_rejected(direct_vm, direct_deploy, direct_bob):
 def test_unreachable_source_stays_unverified_and_blocks_assessment(direct_vm, direct_deploy, direct_bob):
     # No web mock registered -> fetch fails inside _fetch_and_match's try/except.
     direct_vm.strict_mocks = False
-    contract = direct_deploy(CONTRACT)
-    direct_vm.sender = direct_bob
+    contract = deploy_and_authorize(direct_deploy, direct_vm, direct_bob)
     pid = contract.register_product('Example Co', 'BAT-1', 'B1', 'SERIAL-001', '2026-01', 'hash-1')
     nid = contract.file_notice('CPSC', URL, '26-500', NOTICE_TEXT, 'notice-hash-1')
     contract.verify_source_notice(nid)
@@ -69,8 +99,7 @@ def test_unreachable_source_stays_unverified_and_blocks_assessment(direct_vm, di
 def test_mismatched_claim_stays_unverified(direct_vm, direct_deploy, direct_bob):
     direct_vm.mock_web(r'cpsc\.gov', {'status': 200, 'body': LIVE_PAGE})
     direct_vm.mock_llm(SOURCE_PATTERN, MISMATCH)
-    contract = direct_deploy(CONTRACT)
-    direct_vm.sender = direct_bob
+    contract = deploy_and_authorize(direct_deploy, direct_vm, direct_bob)
     nid = contract.file_notice('CPSC', URL, '26-500', 'A completely different fabricated recall claim.', 'h')
     contract.verify_source_notice(nid)
     assert contract.get_notice(nid)['verified'] is False
@@ -78,8 +107,7 @@ def test_mismatched_claim_stays_unverified(direct_vm, direct_deploy, direct_bob)
 
 def test_verified_notice_binds_source_digest(direct_vm, direct_deploy, direct_bob):
     mock_happy_source(direct_vm)
-    contract = direct_deploy(CONTRACT)
-    direct_vm.sender = direct_bob
+    contract = deploy_and_authorize(direct_deploy, direct_vm, direct_bob)
     nid = file_and_verify(contract, direct_vm)
     notice = contract.get_notice(nid)
     assert notice['verified'] is True
@@ -110,8 +138,7 @@ def test_leader_forgery_does_not_validate(direct_vm, direct_deploy, direct_bob):
 def test_malformed_leader_response_stays_uncertain(direct_vm, direct_deploy, direct_bob):
     mock_happy_source(direct_vm)
     direct_vm.mock_llm(SCOPE_PATTERN, 'not json at all')
-    contract = direct_deploy(CONTRACT)
-    direct_vm.sender = direct_bob
+    contract = deploy_and_authorize(direct_deploy, direct_vm, direct_bob)
     pid = contract.register_product('Example Co', 'BAT-1', 'B1', 'SERIAL-001', '2026-01', 'hash-1')
     nid = file_and_verify(contract, direct_vm)
     aid = contract.open_assessment(pid, nid)
@@ -123,8 +150,7 @@ def test_malformed_leader_response_stays_uncertain(direct_vm, direct_deploy, dir
 def test_not_affected_clears_gate(direct_vm, direct_deploy, direct_bob):
     mock_happy_source(direct_vm)
     direct_vm.mock_llm(SCOPE_PATTERN, NOT_AFFECTED)
-    contract = direct_deploy(CONTRACT)
-    direct_vm.sender = direct_bob
+    contract = deploy_and_authorize(direct_deploy, direct_vm, direct_bob)
     pid = contract.register_product('Example Co', 'BAT-2', 'B9', 'SERIAL-002', '2026-02', 'hash-2')
     nid = file_and_verify(contract, direct_vm)
     aid = contract.open_assessment(pid, nid)
@@ -134,8 +160,7 @@ def test_not_affected_clears_gate(direct_vm, direct_deploy, direct_bob):
 
 
 def test_owner_isolation_on_component_link(direct_vm, direct_deploy, direct_bob, direct_charlie):
-    contract = direct_deploy(CONTRACT)
-    direct_vm.sender = direct_bob
+    contract = deploy_and_authorize(direct_deploy, direct_vm, direct_bob)
     pid = contract.register_product('Example Co', 'BAT-1', 'B1', 'SERIAL-001', '2026-01', 'hash-1')
     direct_vm.sender = direct_charlie
     comp_id = contract.register_product('Part Co', 'CELL-9', 'C9', 'SERIAL-900', '2026-01', 'hash-9')
@@ -144,8 +169,7 @@ def test_owner_isolation_on_component_link(direct_vm, direct_deploy, direct_bob,
 
 
 def test_dependency_cycle_rejected(direct_vm, direct_deploy, direct_bob):
-    contract = direct_deploy(CONTRACT)
-    direct_vm.sender = direct_bob
+    contract = deploy_and_authorize(direct_deploy, direct_vm, direct_bob)
     a = contract.register_product('A', 'A', 'A', 'A', '2026-01', 'h')
     b = contract.register_product('B', 'B', 'B', 'B', '2026-01', 'h')
     contract.link_component(a, b)
@@ -156,8 +180,7 @@ def test_dependency_cycle_rejected(direct_vm, direct_deploy, direct_bob):
 def test_appeal_reevaluates_with_evidence(direct_vm, direct_deploy, direct_bob):
     mock_happy_source(direct_vm)
     direct_vm.mock_llm(SCOPE_PATTERN, AFFECTED)
-    contract = direct_deploy(CONTRACT)
-    direct_vm.sender = direct_bob
+    contract = deploy_and_authorize(direct_deploy, direct_vm, direct_bob)
     pid = contract.register_product('Example Co', 'BAT-1', 'B1', 'SERIAL-001', '2026-01', 'hash-1')
     nid = file_and_verify(contract, direct_vm)
     aid = contract.open_assessment(pid, nid)
@@ -174,8 +197,7 @@ def test_appeal_reevaluates_with_evidence(direct_vm, direct_deploy, direct_bob):
 def test_remedy_flow_clears_affected_unit(direct_vm, direct_deploy, direct_bob):
     mock_happy_source(direct_vm)
     direct_vm.mock_llm(SCOPE_PATTERN, AFFECTED)
-    contract = direct_deploy(CONTRACT)
-    direct_vm.sender = direct_bob
+    contract = deploy_and_authorize(direct_deploy, direct_vm, direct_bob)
     pid = contract.register_product('Example Co', 'BAT-1', 'B1', 'SERIAL-001', '2026-01', 'hash-1')
     nid = file_and_verify(contract, direct_vm)
     aid = contract.open_assessment(pid, nid)
@@ -192,8 +214,7 @@ def test_remedy_flow_clears_affected_unit(direct_vm, direct_deploy, direct_bob):
 def test_notice_supersede_invalidates_old_version(direct_vm, direct_deploy, direct_bob):
     mock_happy_source(direct_vm)
     direct_vm.mock_llm(SCOPE_PATTERN, NOT_AFFECTED)
-    contract = direct_deploy(CONTRACT)
-    direct_vm.sender = direct_bob
+    contract = deploy_and_authorize(direct_deploy, direct_vm, direct_bob)
     pid = contract.register_product('Example Co', 'BAT-1', 'B1', 'SERIAL-001', '2026-01', 'hash-1')
     nid = file_and_verify(contract, direct_vm)
     new_nid = contract.supersede_notice(nid, NOTICE_TEXT + ' Revised scope applies to batch B1 and B2.', 'notice-hash-2')

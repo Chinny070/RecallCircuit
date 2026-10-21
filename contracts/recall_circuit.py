@@ -90,6 +90,11 @@ class HoldChanged(gl.Event):
     def __init__(self, product_id: u256, blocked: bool, /, **blob): ...
 
 
+def _as_address(value) -> Address:
+    """Normalize an Address-typed calldata argument that may arrive as raw bytes."""
+    return value if isinstance(value, Address) else Address(value)
+
+
 def bounded(value: str, limit: int = MAX_TEXT) -> str:
     if not isinstance(value, str) or not value.strip() or len(value) > limit:
         raise gl.vm.UserError('invalid bounded text')
@@ -163,6 +168,8 @@ class RecallCircuit(gl.Contract):
     assessments: TreeMap[u256, Assessment]
     appeals: TreeMap[u256, Appeal]
     remedies: TreeMap[u256, Remedy]
+    authorized_filers: TreeMap[Address, bool]
+    admin: Address
     next_product: u256
     next_notice: u256
     next_assessment: u256
@@ -170,11 +177,39 @@ class RecallCircuit(gl.Contract):
     next_remedy: u256
 
     def __init__(self):
+        self.admin = gl.message.sender_address
+        self.authorized_filers[gl.message.sender_address] = True
         self.next_product = u256(1)
         self.next_notice = u256(1)
         self.next_assessment = u256(1)
         self.next_appeal = u256(1)
         self.next_remedy = u256(1)
+
+    def _is_authorized_filer(self, who: Address) -> bool:
+        who = _as_address(who)
+        return who == self.admin or bool(self.authorized_filers.get(who, False))
+
+    @gl.public.write
+    def authorize_filer(self, who: Address) -> None:
+        """Admin-gated allowlist: only authorized sources may file recall notices.
+
+        This is a minimal DoS/griefing control (CLAUDE_FINISH_PROMPT item 3). It
+        does not implement staking or slashing; the admin is a single address
+        set at deployment, not an on-chain governance process.
+        """
+        if gl.message.sender_address != self.admin: raise gl.vm.UserError('admin only')
+        self.authorized_filers[_as_address(who)] = True
+
+    @gl.public.write
+    def revoke_filer(self, who: Address) -> None:
+        who = _as_address(who)
+        if gl.message.sender_address != self.admin: raise gl.vm.UserError('admin only')
+        if who == self.admin: raise gl.vm.UserError('cannot revoke admin')
+        self.authorized_filers[who] = False
+
+    @gl.public.view
+    def is_authorized_filer(self, who: Address) -> bool:
+        return self._is_authorized_filer(who)
 
     def _product(self, pid: u256) -> Product:
         p = self.products.get(pid)
@@ -236,7 +271,14 @@ class RecallCircuit(gl.Contract):
 
     @gl.public.write
     def file_notice(self, authority: str, source_url: str, source_id: str, notice_text: str, source_hash: str) -> u256:
-        """Untrusted notice submission; classification never presumes source authenticity."""
+        """Untrusted notice submission; classification never presumes source authenticity.
+
+        Filing is restricted to admin-authorized addresses (see authorize_filer)
+        to bound griefing/DoS via unlimited notice spam; this is independent of
+        -- and in addition to -- the domain allowlist and verify_source_notice.
+        """
+        if not self._is_authorized_filer(gl.message.sender_address):
+            raise gl.vm.UserError('sender not an authorized filer')
         if int(self.next_notice) > MAX_NOTICES: raise gl.vm.UserError('notice capacity')
         vals = [bounded(authority,160), bounded(source_url,350), bounded(source_id,160),
                 bounded(notice_text), bounded(source_hash,100)]

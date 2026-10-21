@@ -4,7 +4,27 @@ Recorded 2026-10-20/21 against **StudioNet (chain ID 61999, RPC `https://studio.
 
 No step below used a mock, simulator, or fabricated value. Every status, reason string, and vote tally is copied verbatim from a `genlayer write`/`genlayer call`/`genlayer receipt` response. Where a transaction hash was not captured in the terminal output before truncation, that is stated explicitly rather than invented — the corresponding on-chain state read is cited instead as the evidence.
 
-This document covers two deployments: an initial deployment (section A) demonstrating the core adjudication lifecycle with claimant-supplied notice text, and a second deployment (section B) after adding real authoritative-source verification, demonstrated against a genuine, currently-live CPSC recall fetched over `gl.nondet.web.render`.
+This document covers three deployments: an initial deployment (section A) demonstrating the core adjudication lifecycle with claimant-supplied notice text, a second deployment (section B) after adding real authoritative-source verification, demonstrated against a genuine, currently-live CPSC recall fetched over `gl.nondet.web.render`, and a third deployment (section C) after adding an admin-gated authorized-filer allowlist to bound notice-filing DoS/griefing.
+
+## C. Authorized-filer allowlist (current contract)
+
+```
+Contract Address:  0xFeBd68B38e06245c7F319C7e9684510D89923880
+Deploy Tx Hash:     0x91b3e1d9ace50a44acb2061dd3e46bb654b561d2ab0b561c8e96c0eb935edd39
+Status:            FINALIZED
+```
+
+`file_notice` now additionally requires `gl.message.sender_address` to be the contract admin (set to the deployer at construction) or an address the admin explicitly authorized via `authorize_filer`. This is on top of, not instead of, the domain allowlist and `verify_source_notice` from section B.
+
+1. `is_authorized_filer(0xaffE...e70b)` (the deployer) → `true` immediately after deploy, with no explicit call.
+2. Created a second local account, `recall-outsider` (`0xc95df8a18ccae83b6bc5f6e234b8c7859591bfee`), unrelated to the admin.
+3. **Rejected:** `recall-outsider` called `file_notice(...)` before being authorized. Transaction `0x92092d663c86904056aff59c6d069742951306c853cd44bdd0f632593acac5eb` was `ACCEPTED`/`FINALIZED` at the chain-lifecycle level (deterministic revert is itself a valid consensus outcome), but execution reverted with `sender not an authorized filer`: confirmed by `get_notice(1)` erroring as unknown immediately after — no notice was created.
+4. Admin called `authorize_filer(0xc95df8...91bfee)`, tx `0x5f0c39b131179391faeb56ad65a3b20e78898930a549a19e1bb62a62397076e0`. `is_authorized_filer` then read back `true`.
+5. **Allowed:** `recall-outsider`, now authorized, called `file_notice(...)` for the same real CPSC URL from section B, tx `0x894d235910667ab48dd61b95a9e7df06be28ec2040ec0e30d6b99dcbbc5759c9` → notice 1 created successfully, confirmed by `get_notice(1)`.
+6. Ran `verify_source_notice(1)` on that notice (tx `0x78adc556c42f8e8ca93748636e6c79e59190ebe94731516bf02f71b990b08699`): the live fetch succeeded (`source_digest` matched the same real page digest from section B1), but the independent LLM comparison correctly judged the claimant's actual text — a meta-comment about being authorized, not an actual recall description — as **not** a faithful summary of the live page, so `verified` stayed `false`. This was not a staged failure; it is the real match check correctly catching a notice whose text doesn't substantively describe the recall.
+7. Admin called `revoke_filer(0xc95df8...91bfee)`, tx `0xd7c06e225d3159920b549dd76c923cd39e0088e49b6e8e8fcc883868a0953652`. `is_authorized_filer` then read back `false` again, so the previously-authorized address is locked out.
+
+This demonstrates a real admin-controlled allowlist gating who may file notices at all, independent of the domain/source checks in section B, closing out the remaining part of `CLAUDE_FINISH_PROMPT.md` item 3 that was feasible without a staking/token economy.
 
 ## B. Authoritative source verification (current contract)
 
@@ -146,7 +166,7 @@ Before product 5 has its own assessment: `can_release(5)` → `false` — fail-c
 ## What this does **not** demonstrate (explicit scope limits)
 
 - **Source verification is a re-fetch-and-compare consensus check, not cryptographic proof of government authorship.** `verify_source_notice` independently fetches the claimed URL via `gl.nondet.web.render` and has leader+validators agree the claimed text faithfully summarizes what was fetched; it does not verify TLS/domain ownership cryptographically beyond what the GenVM network's own HTTP fetch does, and it does not hold a CPSC-signed artifact. Domain trust is still anchored to the `AUTHORIZED_SOURCE_PREFIXES` allowlist (`cpsc.gov`/`www.cpsc.gov`) hardcoded in the contract, not to an on-chain governance process.
-- **No DoS-resistant / staked notice registration.** Any caller can still call `file_notice` for an allowlisted domain up to `MAX_NOTICES`, then attempt `verify_source_notice`; a flood of plausible-looking but ultimately-unverified notices against real URLs was not load-tested, though each one that fails verification cannot gate any product (see `can_release`, which skips unverified notices).
+- **No staking/slashing economy.** Section C adds a single-admin authorized-filer allowlist, demonstrated live, which bounds who may call `file_notice` at all — but the admin is one address set at deployment, not an on-chain governance process, multisig, or stake-weighted mechanism. A compromised or malicious admin could authorize arbitrary filers. A flood of plausible-looking but ultimately-unverified notices from an authorized-but-careless filer was not load-tested, though each one that fails verification still cannot gate any product (see `can_release`, which skips unverified notices).
 - A handful of transaction hashes from the section A run were not retained in the captured terminal output (truncated via `tail`, and the GenLayer explorer at `genlayer-explorer.vercel.app` returned `503 DEPLOYMENT_PAUSED` when checked afterward to recover them). Every transaction without a recorded hash in section A is still verified by its on-chain state read, not by narrative claim alone. Section B hashes were captured directly via `grep` on live command output.
 - `ReleaseGuard` (`contracts/recall_gate.py`) was linted (`genvm-lint check` passes) but not deployed or exercised live in this session.
 - Only `cpsc.gov` was exercised as an authorized source domain; no other regulator domain was tested.
