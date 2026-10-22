@@ -22,13 +22,16 @@ something that still exists.
 
 ## Exact deployable source hash
 
-The sha256 of the contract file actually deployed to StudioNet in the commit
-that introduced this document:
+The sha256 of the contract file actually deployed to StudioNet as of the
+current (evidence-attestor) revision:
 
 ```
-sha256(contracts/recall_circuit.py) = a3ec5f424e860b9c1c784b101b811da16cc51293c8d4e578cca2685e69f5e233
+sha256(contracts/recall_circuit.py) = 1b0258a6b42f8242efc02230bb21d639e2316a13ca32d7be181289ead34c0f59
 sha256(contracts/recall_gate.py)    = 11d877c8c3e06f587b1ca2b74ac5ffa773479fecb8db61094427979c71023463
 ```
+
+(The first-audit-round revision, deployed to `0x6946f6912A3cbE14d0C1A8b793bbF1F6C7342b84`, hashed to
+`a3ec5f424e860b9c1c784b101b811da16cc51293c8d4e578cca2685e69f5e233` — see `docs/LIVE_PROOFS.md` section E for that deployment's own evidence.)
 
 `SOURCE_MANIFEST.json` carries the same hashes for every tracked file as of
 each commit; `docs/LIVE_PROOFS.md` records which git commit and which hash

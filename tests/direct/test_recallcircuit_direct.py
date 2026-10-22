@@ -27,11 +27,29 @@ MISMATCH = json.dumps({'match': False, 'reason': 'Claimed text adds scope absent
 
 SCOPE_PATTERN = 'INDEPENDENT SCOPE ADJUDICATION'
 SOURCE_PATTERN = 'INDEPENDENT SOURCE AUTHENTICITY CHECK'
+EVIDENCE_PATTERN = 'INDEPENDENT EVIDENCE SOURCE CHECK'
+
+EVIDENCE_SCOPE_EXCLUSION, EVIDENCE_REMEDY_COMPLETED = 1, 2
+VALID_COMMITMENT = 'sha256:' + 'ab' * 32  # 64 lowercase hex chars
 
 
 def mock_happy_source(direct_vm):
     direct_vm.mock_web(r'cpsc\.gov', {'status': 200, 'body': LIVE_PAGE})
     direct_vm.mock_llm(SOURCE_PATTERN, MATCH)
+
+
+def as_admin_authorize_issuer(contract, direct_vm, admin, issuer):
+    """direct_owner is the deployer/admin: the pytest_plugin fixture for it is
+    literally named '(default sender)', the same address direct_vm.sender
+    starts as before any test switches it."""
+    direct_vm.sender = admin
+    contract.authorize_issuer(issuer)
+
+
+def submit_attestation(contract, direct_vm, issuer, assessment_id, evidence_type, description,
+                        commitment=VALID_COMMITMENT, source_url=''):
+    direct_vm.sender = issuer
+    return contract.submit_attestation(assessment_id, evidence_type, commitment, description, source_url)
 
 
 def deploy_and_authorize(direct_deploy, direct_vm, filer):
@@ -309,44 +327,311 @@ def test_remedy_evidence_must_reference_unit_serial(direct_vm, direct_deploy, di
         contract.request_remedy(aid, 'Replacement installed per instructions.', 'evidence-hash-1')
 
 
-def test_appeal_reevaluates_with_evidence(direct_vm, direct_deploy, direct_bob):
+def test_appeal_reevaluates_with_evidence(direct_vm, direct_deploy, direct_bob, direct_charlie, direct_owner):
+    """Clearance now requires BOTH the owner's appeal AND an independent,
+    authorized, non-owner issuer's case-bound attestation AND validator
+    agreement -- not the owner's text alone."""
     contract, pid, nid, aid = setup(direct_vm, direct_deploy, direct_bob)
     contract.resolve_assessment(aid)
     assert contract.get_assessment(aid)['status'] == 1
+    direct_vm.sender = direct_bob
     appeal_id = contract.appeal_assessment(
         aid, f'Serial number {SERIAL} is outside the recalled batch', 'evidence-hash-1')
     appeal = contract.get_appeal(appeal_id)
     assert appeal['evidence_hash'] == 'evidence-hash-1'
+
+    as_admin_authorize_issuer(contract, direct_vm, direct_owner, direct_charlie)
+    att_id = submit_attestation(
+        contract, direct_vm, direct_charlie, aid, EVIDENCE_SCOPE_EXCLUSION,
+        f'Factory QA log confirms unit {SERIAL} is a pre-production test lot, never commercially sold.')
+
     direct_vm.clear_mocks()
     mock_happy_source(direct_vm)
     direct_vm.mock_llm(SCOPE_PATTERN, NOT_AFFECTED)
+    direct_vm.sender = direct_bob
     contract.resolve_appeal(appeal_id)
     assert contract.get_assessment(aid)['status'] == 2
+    assert contract.get_attestation(att_id)['consumed'] is True
 
 
-def test_remedy_flow_clears_affected_unit(direct_vm, direct_deploy, direct_bob):
+def test_remedy_flow_clears_affected_unit(direct_vm, direct_deploy, direct_bob, direct_charlie, direct_owner):
     contract, pid, nid, aid = setup(direct_vm, direct_deploy, direct_bob)
     contract.resolve_assessment(aid)
+    direct_vm.sender = direct_bob
     remedy_id = contract.request_remedy(
         aid, f'Replacement unit installed on {SERIAL} per CPSC instructions', 'evidence-hash-1')
     remedy = contract.get_remedy(remedy_id)
     assert remedy['evidence_hash'] == 'evidence-hash-1'
+
+    as_admin_authorize_issuer(contract, direct_vm, direct_owner, direct_charlie)
+    att_id = submit_attestation(
+        contract, direct_vm, direct_charlie, aid, EVIDENCE_REMEDY_COMPLETED,
+        f'Authorized repair provider confirms unit {SERIAL} received the CPSC-specified replacement part.')
+
     direct_vm.clear_mocks()
     mock_happy_source(direct_vm)
     direct_vm.mock_llm(SCOPE_PATTERN, NOT_AFFECTED)
+    direct_vm.sender = direct_bob
     contract.resolve_remedy(remedy_id)
     assert contract.get_assessment(aid)['status'] == 5  # REMEDIATED
     assert contract.can_release(pid) is True
+    assert contract.get_attestation(att_id)['consumed'] is True
 
 
 def test_forged_remedy_without_matching_evidence_stays_held(direct_vm, direct_deploy, direct_bob):
+    """No attestation at all: the claimant's own convincing text, and even an
+    LLM willing to accept it, must never be enough -- missing attestation is
+    checked before any LLM call is even made."""
     contract, pid, nid, aid = setup(direct_vm, direct_deploy, direct_bob)
     contract.resolve_assessment(aid)
+    direct_vm.sender = direct_bob
     remedy_id = contract.request_remedy(
         aid, f'Unit {SERIAL}: trust me it is fine now', 'evidence-hash-1')
     direct_vm.clear_mocks()
     mock_happy_source(direct_vm)
-    direct_vm.mock_llm(SCOPE_PATTERN, AFFECTED)  # independent re-check still finds it affected
+    direct_vm.mock_llm(SCOPE_PATTERN, AFFECTED)  # irrelevant: never reached without an attestation
     contract.resolve_remedy(remedy_id)
     assert contract.get_assessment(aid)['status'] == 3  # UNCERTAIN, not cleared
     assert contract.can_release(pid) is False
+
+
+# --- independent evidence attestors: authorization, binding, mandatory gating
+
+def test_unauthorized_issuer_cannot_attest(direct_vm, direct_deploy, direct_bob, direct_charlie):
+    contract, pid, nid, aid = setup(direct_vm, direct_deploy, direct_bob)
+    contract.resolve_assessment(aid)
+    direct_vm.sender = direct_charlie  # never authorized as an issuer
+    with direct_vm.expect_revert('sender not an authorized evidence issuer'):
+        contract.submit_attestation(aid, EVIDENCE_SCOPE_EXCLUSION, VALID_COMMITMENT, f'Unit {SERIAL} excluded.', '')
+
+
+def test_admin_is_never_an_implicit_issuer_and_cannot_self_attest(direct_vm, direct_deploy, direct_bob, direct_owner):
+    """The admin gets no automatic issuer trust -- unlike authorize_filer,
+    where the deployer is auto-trusted, issuer trust is never implicit."""
+    contract, pid, nid, aid = setup(direct_vm, direct_deploy, direct_bob)
+    contract.resolve_assessment(aid)
+    direct_vm.sender = direct_owner
+    with direct_vm.expect_revert('sender not an authorized evidence issuer'):
+        contract.submit_attestation(aid, EVIDENCE_SCOPE_EXCLUSION, VALID_COMMITMENT, f'Unit {SERIAL} excluded.', '')
+
+
+def test_product_owner_cannot_attest_own_case_even_if_authorized_as_issuer(direct_vm, direct_deploy, direct_bob, direct_owner):
+    """No bypass through the product owner: even if the admin mistakenly (or
+    maliciously) authorizes the owner as an issuer, self-attestation is still
+    refused at submission time."""
+    contract, pid, nid, aid = setup(direct_vm, direct_deploy, direct_bob)
+    contract.resolve_assessment(aid)
+    as_admin_authorize_issuer(contract, direct_vm, direct_owner, direct_bob)
+    direct_vm.sender = direct_bob
+    with direct_vm.expect_revert('issuer must be independent of the product owner'):
+        contract.submit_attestation(aid, EVIDENCE_SCOPE_EXCLUSION, VALID_COMMITMENT, f'Unit {SERIAL} excluded.', '')
+
+
+def test_invented_hash_rejected_as_malformed_commitment(direct_vm, direct_deploy, direct_bob, direct_charlie, direct_owner):
+    """A claimant -- or even an authorized issuer -- cannot substitute a
+    made-up string for the required canonical sha256:<64-hex> commitment."""
+    contract, pid, nid, aid = setup(direct_vm, direct_deploy, direct_bob)
+    contract.resolve_assessment(aid)
+    as_admin_authorize_issuer(contract, direct_vm, direct_owner, direct_charlie)
+    direct_vm.sender = direct_charlie
+    with direct_vm.expect_revert('evidence commitment must be sha256:<64-hex>'):
+        contract.submit_attestation(aid, EVIDENCE_SCOPE_EXCLUSION, 'i-made-this-up', f'Unit {SERIAL} excluded.', '')
+
+
+def test_attestation_bound_to_one_case_cannot_clear_a_different_case(
+        direct_vm, direct_deploy, direct_bob, direct_charlie, direct_alice, direct_owner):
+    """Wrong-unit / wrong-notice evidence: an attestation is captured against
+    one specific assessment_id at submission time. An otherwise-valid
+    attestation for case 1 is structurally inapplicable to case 2, regardless
+    of how similar the claimed facts look."""
+    mock_happy_source(direct_vm)
+    direct_vm.mock_llm(SCOPE_PATTERN, AFFECTED)
+    contract = deploy_and_authorize(direct_deploy, direct_vm, direct_bob)
+    pid1 = contract.register_product('Example Co', 'BAT-1', 'B1', 'SERIAL-AAA', '2026-01', 'h1')
+    nid = file_and_verify(contract, direct_vm)
+    aid1 = contract.open_assessment(pid1, nid)
+    contract.resolve_assessment(aid1)
+    assert contract.get_assessment(aid1)['status'] == 1
+
+    direct_vm.sender = direct_charlie
+    pid2 = contract.register_product('Example Co', 'BAT-1', 'B1', 'SERIAL-BBB', '2026-01', 'h2')
+    aid2 = contract.open_assessment(pid2, nid)
+    contract.resolve_assessment(aid2)
+    assert contract.get_assessment(aid2)['status'] == 1
+
+    as_admin_authorize_issuer(contract, direct_vm, direct_owner, direct_alice)
+    direct_vm.sender = direct_bob
+    appeal1 = contract.appeal_assessment(aid1, 'Serial number SERIAL-AAA is outside the recalled batch', 'h')
+    submit_attestation(contract, direct_vm, direct_alice, aid1, EVIDENCE_SCOPE_EXCLUSION,
+                        'Factory QA log confirms unit SERIAL-AAA is a pre-production test lot.')
+
+    direct_vm.sender = direct_charlie
+    appeal2 = contract.appeal_assessment(aid2, 'Serial number SERIAL-BBB is outside the recalled batch', 'h')
+
+    direct_vm.clear_mocks()
+    mock_happy_source(direct_vm)
+    direct_vm.mock_llm(SCOPE_PATTERN, NOT_AFFECTED)
+    contract.resolve_appeal(appeal2)
+    assert contract.get_assessment(aid2)['status'] == 3  # case 1's attestation cannot clear case 2
+
+    contract.resolve_appeal(appeal1)
+    assert contract.get_assessment(aid1)['status'] == 2  # its own matching attestation does clear it
+
+
+def test_tampered_evidence_source_fails_independent_check(direct_vm, direct_deploy, direct_bob, direct_charlie, direct_owner):
+    """Modified/tampered evidence: an issuer cites a real, reachable public
+    source, but what it actually says doesn't support the claimed facts --
+    the independent fetch-and-compare must catch this, not just trust the
+    issuer's description."""
+    contract, pid, nid, aid = setup(direct_vm, direct_deploy, direct_bob)
+    contract.resolve_assessment(aid)
+    direct_vm.sender = direct_bob
+    appeal_id = contract.appeal_assessment(aid, f'Serial number {SERIAL} is outside the recalled batch', 'h')
+
+    as_admin_authorize_issuer(contract, direct_vm, direct_owner, direct_charlie)
+    direct_vm.mock_web(r'manufacturer\.example', {'status': 200, 'body': 'Unrelated maintenance notice; no mention of this unit.'})
+    direct_vm.mock_llm(EVIDENCE_PATTERN, MISMATCH)
+    direct_vm.sender = direct_charlie
+    contract.submit_attestation(aid, EVIDENCE_SCOPE_EXCLUSION, VALID_COMMITMENT,
+                                 f'Manufacturer confirms unit {SERIAL} is excluded', 'https://manufacturer.example/records/1')
+    att = contract.get_attestation(1)
+    assert att['source_checked'] is True
+    assert att['source_match'] is False
+
+    direct_vm.clear_mocks()
+    direct_vm.sender = direct_bob
+    contract.resolve_appeal(appeal_id)
+    assert contract.get_assessment(aid)['status'] == 3  # failed source check invalidates the attestation
+
+
+def test_source_fetch_failure_invalidates_attestation(direct_vm, direct_deploy, direct_bob, direct_charlie, direct_owner):
+    contract, pid, nid, aid = setup(direct_vm, direct_deploy, direct_bob)
+    contract.resolve_assessment(aid)
+    direct_vm.sender = direct_bob
+    appeal_id = contract.appeal_assessment(aid, f'Serial number {SERIAL} is outside the recalled batch', 'h')
+
+    as_admin_authorize_issuer(contract, direct_vm, direct_owner, direct_charlie)
+    direct_vm.strict_mocks = False  # no web mock registered -> fetch fails
+    direct_vm.sender = direct_charlie
+    contract.submit_attestation(aid, EVIDENCE_SCOPE_EXCLUSION, VALID_COMMITMENT,
+                                 f'Manufacturer confirms unit {SERIAL} is excluded', 'https://manufacturer.example/records/1')
+    att = contract.get_attestation(1)
+    assert att['source_checked'] is True
+    assert att['source_match'] is False
+
+    direct_vm.clear_mocks()
+    direct_vm.sender = direct_bob
+    contract.resolve_appeal(appeal_id)
+    assert contract.get_assessment(aid)['status'] == 3
+
+
+def test_duplicate_active_attestation_for_same_case_rejected(direct_vm, direct_deploy, direct_bob, direct_charlie, direct_owner):
+    contract, pid, nid, aid = setup(direct_vm, direct_deploy, direct_bob)
+    contract.resolve_assessment(aid)
+    as_admin_authorize_issuer(contract, direct_vm, direct_owner, direct_charlie)
+    submit_attestation(contract, direct_vm, direct_charlie, aid, EVIDENCE_SCOPE_EXCLUSION,
+                        f'Unit {SERIAL} excluded per factory records.')
+    with direct_vm.expect_revert('an active attestation of this type already exists for this case'):
+        submit_attestation(contract, direct_vm, direct_charlie, aid, EVIDENCE_SCOPE_EXCLUSION,
+                            f'Unit {SERIAL} excluded again, replayed.')
+
+
+def test_revoked_attestation_cannot_clear(direct_vm, direct_deploy, direct_bob, direct_charlie, direct_owner):
+    contract, pid, nid, aid = setup(direct_vm, direct_deploy, direct_bob)
+    contract.resolve_assessment(aid)
+    direct_vm.sender = direct_bob
+    appeal_id = contract.appeal_assessment(aid, f'Serial number {SERIAL} is outside the recalled batch', 'h')
+
+    as_admin_authorize_issuer(contract, direct_vm, direct_owner, direct_charlie)
+    att_id = submit_attestation(contract, direct_vm, direct_charlie, aid, EVIDENCE_SCOPE_EXCLUSION,
+                                 f'Unit {SERIAL} excluded per factory records.')
+    direct_vm.sender = direct_charlie
+    contract.revoke_attestation(att_id)
+    assert contract.get_attestation(att_id)['status'] == 2  # ATT_REVOKED
+
+    direct_vm.clear_mocks()
+    mock_happy_source(direct_vm)
+    direct_vm.mock_llm(SCOPE_PATTERN, NOT_AFFECTED)
+    direct_vm.sender = direct_bob
+    contract.resolve_appeal(appeal_id)
+    assert contract.get_assessment(aid)['status'] == 3
+
+
+def test_stale_attestation_after_generation_change_cannot_clear(direct_vm, direct_deploy, direct_bob, direct_charlie, direct_owner):
+    """Expiry is modeled by assessment generation rather than wall-clock time
+    (GenVM gives no reliable shared clock for this): once the assessment's
+    generation moves on, an attestation captured at the old generation is
+    stale and must not be reusable, even though nothing about it was revoked."""
+    contract, pid, nid, aid = setup(direct_vm, direct_deploy, direct_bob)
+    contract.resolve_assessment(aid)
+    direct_vm.sender = direct_bob
+    remedy_id = contract.request_remedy(aid, f'Unit {SERIAL} repaired.', 'h')
+
+    as_admin_authorize_issuer(contract, direct_vm, direct_owner, direct_charlie)
+    att_id = submit_attestation(contract, direct_vm, direct_charlie, aid, EVIDENCE_REMEDY_COMPLETED,
+                                 f'Repair provider confirms unit {SERIAL} replacement completed.')
+    assert contract.get_attestation(att_id)['assessment_generation'] == 1
+
+    direct_vm.sender = direct_bob
+    appeal_id = contract.appeal_assessment(aid, f'Serial number {SERIAL} appeal text', 'h')
+    direct_vm.clear_mocks()
+    mock_happy_source(direct_vm)
+    direct_vm.mock_llm(SCOPE_PATTERN, AFFECTED)
+    contract.resolve_appeal(appeal_id)  # no matching scope attestation; still bumps generation
+    assert contract.get_assessment(aid)['generation'] == 2
+
+    direct_vm.clear_mocks()
+    mock_happy_source(direct_vm)
+    direct_vm.mock_llm(SCOPE_PATTERN, NOT_AFFECTED)
+    contract.resolve_remedy(remedy_id)
+    assert contract.get_assessment(aid)['status'] == 3  # stale (generation 1) attestation rejected, not REMEDIATED
+
+
+def test_leader_tampering_in_attested_remedy_detected_by_validator(direct_vm, direct_deploy, direct_bob, direct_charlie, direct_owner):
+    contract, pid, nid, aid = setup(direct_vm, direct_deploy, direct_bob)
+    contract.resolve_assessment(aid)
+    direct_vm.sender = direct_bob
+    remedy_id = contract.request_remedy(aid, f'Unit {SERIAL} repaired.', 'h')
+    as_admin_authorize_issuer(contract, direct_vm, direct_owner, direct_charlie)
+    submit_attestation(contract, direct_vm, direct_charlie, aid, EVIDENCE_REMEDY_COMPLETED,
+                        f'Repair provider confirms unit {SERIAL} replacement completed.')
+
+    direct_vm.clear_mocks()
+    mock_happy_source(direct_vm)
+    direct_vm.mock_llm(SCOPE_PATTERN, NOT_AFFECTED)
+    direct_vm.sender = direct_bob
+    contract.resolve_remedy(remedy_id)
+    assert contract.get_assessment(aid)['status'] == 5  # REMEDIATED
+
+    # Even with a valid attestation, a leader's favorable outcome must still
+    # agree with an independent validator re-execution.
+    direct_vm.clear_mocks()
+    mock_happy_source(direct_vm)
+    direct_vm.mock_llm(SCOPE_PATTERN, AFFECTED)
+    assert direct_vm.run_validator() is False
+
+
+def test_release_blocked_throughout_unresolved_attested_case(direct_vm, direct_deploy, direct_bob, direct_charlie, direct_owner):
+    """Single-contract equivalent of 'ReleaseGuard remains blocked throughout
+    unresolved cases' -- cross-contract wiring itself is demonstrated live on
+    StudioNet (see docs/LIVE_PROOFS.md section D), since Direct Mode deploys
+    one contract at a time."""
+    contract, pid, nid, aid = setup(direct_vm, direct_deploy, direct_bob)
+    assert contract.can_release(pid) is False  # pending
+    contract.resolve_assessment(aid)
+    assert contract.can_release(pid) is False  # AFFECTED
+    direct_vm.sender = direct_bob
+    remedy_id = contract.request_remedy(aid, f'Unit {SERIAL} repaired.', 'h')
+    assert contract.can_release(pid) is False  # remedy open, unresolved
+
+    as_admin_authorize_issuer(contract, direct_vm, direct_owner, direct_charlie)
+    submit_attestation(contract, direct_vm, direct_charlie, aid, EVIDENCE_REMEDY_COMPLETED,
+                        f'Repair provider confirms unit {SERIAL} replacement completed.')
+    assert contract.can_release(pid) is False  # attestation alone, unresolved, still blocked
+
+    direct_vm.clear_mocks()
+    mock_happy_source(direct_vm)
+    direct_vm.mock_llm(SCOPE_PATTERN, NOT_AFFECTED)
+    direct_vm.sender = direct_bob
+    contract.resolve_remedy(remedy_id)
+    assert contract.can_release(pid) is True  # only now: attestation + validator agreement

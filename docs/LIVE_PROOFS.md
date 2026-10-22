@@ -4,7 +4,58 @@ Recorded 2026-10-20/21 against **StudioNet (chain ID 61999, RPC `https://studio.
 
 No step below used a mock, simulator, or fabricated value. Every status, reason string, and vote tally is copied verbatim from a `genlayer write`/`genlayer call`/`genlayer receipt` response. Where a transaction hash was not captured in the terminal output before truncation, that is stated explicitly rather than invented — the corresponding on-chain state read is cited instead as the evidence.
 
-This document covers five deployments: an initial deployment (section A) demonstrating the core adjudication lifecycle with claimant-supplied notice text, a second deployment (section B) after adding real authoritative-source verification, demonstrated against a genuine, currently-live CPSC recall fetched over `gl.nondet.web.render`, a third deployment (section C) after adding an admin-gated authorized-filer allowlist to bound notice-filing DoS/griefing, a standalone `ReleaseGuard` consumer contract (section D) proving the gate is enforceable cross-contract, and a fifth deployment (section E) after a security audit identified and fixed several real fail-open gaps in the logic above.
+This document covers six deployments: an initial deployment (section A) demonstrating the core adjudication lifecycle with claimant-supplied notice text, a second deployment (section B) after adding real authoritative-source verification, demonstrated against a genuine, currently-live CPSC recall fetched over `gl.nondet.web.render`, a third deployment (section C) after adding an admin-gated authorized-filer allowlist to bound notice-filing DoS/griefing, a standalone `ReleaseGuard` consumer contract (section D) proving the gate is enforceable cross-contract, a fifth deployment (section E) after a security audit identified and fixed several real fail-open gaps in the logic above, and a sixth deployment (section F) after a further audit closed the remaining gap: a claimant could still obtain NOT_AFFECTED/REMEDIATED clearance purely from their own convincing text plus a made-up hash.
+
+## F. Independent evidence attestors — mandatory, case-bound, non-self-attested clearance (current contract)
+
+```
+Contract Address:  0x3b8E072EF980725C30c974438C8a1928080baaf8 (RecallCircuit)
+Deploy Tx Hash:     0xb0edf6dc4dde432cbdc2b9ad03797f57b69022742da475278f2d74ee7c626f0f
+Status:            FINALIZED
+ReleaseGuard:      0xd53470c49c25BCB545b2df4acbC6F25C0Ef027dC, registry = the address above
+ReleaseGuard Tx:    0x8e48dd939e3c5450ca8077456c2fa7e7fc4529a7f8f755d5e63a39781f4baa51
+```
+
+**Important honesty note before anything else:** this section uses a locally-created GenLayer test wallet (`recall-outsider`, `0xc95df8a18ccae83b6bc5f6e234b8c7859591bfee`) as the "independent evidence issuer." Authorizing it with `authorize_issuer` only grants it the on-chain *privilege* to submit attestations — **it is not, and must never be represented as, proof that this address is a real manufacturer or authorized repair provider.** No genuine independent attestor (a real manufacturer's or repair network's own key) was available for this session. Everything below demonstrates that the *authorization and binding mechanism* works correctly; it does **not** demonstrate real-world evidence authenticity, which remains unproven and must be treated as a live-deployment prerequisite, not something this project can self-certify.
+
+### F1. Claimant's own text, alone, cannot clear a hold — even with a hash
+
+Registered a product matching the real CPSC recall (`The Blue Cactus Company RWX-RBP02`, serial `SERIAL-AUDIT2`), filed and verified notice 1 against the real CPSC URL (tx `0x9441cee1...`, `0xd560c70b...`, `0x1adda43f...`), opened and resolved its assessment to AFFECTED (tx `0xeea981af...`, `0x21edfa4c...`).
+
+The owner called `request_remedy(1, "Unit SERIAL-AUDIT2 was repaired, replacement part installed.", "sha256:claimant-only-evidence")` (tx `0xc5d3259a972bb556439e90dae69acf7f331f45c338c860c62be53bcd7104e633`) — a convincing claim, naming the exact serial, with a hash attached. `resolve_remedy(1)` (tx `0xafe53e08cbaca7202c412299465f33e40cbd0d471810ecdf97ea040da4cffd2f`) did **not** clear it:
+```json
+{"status":3,"reason":"No valid independent remedy-completion attestation; quarantine preserved"}
+```
+No LLM call was even made — the missing-attestation check runs before any classification. This is the exact bypass the brief named, and it is now closed: claimant text plus a made-up hash is insufficient by construction, not by LLM judgment.
+
+### F2. Self-attestation and unauthorized issuers rejected
+
+The deployer/admin account (also the product owner) attempted `submit_attestation(1, EVIDENCE_REMEDY_COMPLETED, ...)` directly — never having been authorized as an issuer. Reverted on-chain with the decoded payload **`"sender not an authorized evidence issuer"`** (tx `0x5b5e05ca18dfd3a5c0133dc320a5d53e562d223097ec969ec6a1474ab46c31a9`). The admin itself is never auto-granted issuer status (unlike `authorize_filer`, where the deployer is auto-trusted) — this is enforced in Direct Mode tests for both "admin never implicit issuer" and "owner cannot self-attest even if separately authorized as an issuer."
+
+### F3. A properly authorized, non-owner issuer's attestation — mandatory and sufficient together with validator agreement
+
+Admin called `authorize_issuer(0xc95df8a18ccae83b6bc5f6e234b8c7859591bfee)` (tx `0x8b633a9922438aa49c4b49c6a0faf71702cfa7b20e6f2332497c35142f8795c3`); `is_authorized_issuer` read back `true`.
+
+On a second product (`SERIAL-AUDIT3`, assessment 2, independently resolved AFFECTED against the same real recall), the owner called `request_remedy(2, ...)`. The **test-wallet issuer** then called:
+```
+submit_attestation(2, EVIDENCE_REMEDY_COMPLETED,
+  "sha256:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+  "Authorized repair provider test-wallet attestation: unit SERIAL-AUDIT3 received the CPSC-specified replacement battery pack per remedy instructions.",
+  "")
+```
+(tx `0xe7e9f45adf82d6ef398a34cbc24d07d0c58acad377724a4b433008ed80f6be31`). `get_attestation(2)` read back every bound field captured by the contract itself from live chain state — `assessment_id:2, product_id:2, serial:"SERIAL-AUDIT3", notice_id:1, notice_digest:"90a387ec...", product_revision:1, issuer:"0xc95df8...", status:1 (ACTIVE), consumed:false` — not supplied by the issuer, structurally impossible to mismatch.
+
+`can_release(2)` read `false` immediately before resolution — an attestation existing is not by itself clearance. `resolve_remedy(2)` (tx `0x6c06afd701168f0a95aca871c1808edc01775c51a6473503da24f93ba567fe22`) then independently re-ran the leader+validator classification using the **issuer's** attested description (never the owner's text) and produced:
+```json
+{"status":5,"reason":"Remedy verified: Attested repair record confirms SERIAL-AUDIT3 received CPSC-specified replacement battery pack per remedy instructions from authorized repair provider."}
+```
+`get_attestation(2)['consumed']` read back `true`. `can_release(2)` read `true`. Cross-contract `ReleaseGuard.can_release(2)` on the new deployment independently confirmed `true`, while `ReleaseGuard.can_release(1)` (the first product, still stuck UNCERTAIN from F1) independently confirmed `false` — both read from a separate contract address.
+
+### What F does not demonstrate
+
+- **Real-world attestor authenticity is unproven.** The "issuer" here is a GenLayer test wallet with no real-world identity binding. The mechanism (registry, case-binding, mandatory gating, consumption) is proven; whether any given on-chain address is really a manufacturer or repair provider is **not**, and cannot be, proven by this contract alone — see the honesty note above.
+- **Adversarial scenarios not reproduced live** (wrong-case attestation, tampered/mismatched public source, duplicate/replay rejection, revoked/stale attestation, leader tampering caught by the validator) are Direct Mode evidence (`tests/direct/test_recallcircuit_direct.py`), not live-chain evidence — StudioNet's current real recall data doesn't let these specific adversarial conditions be constructed safely without risking real state corruption across sessions. All are covered in the 51/51 passing test suite.
+- **No source-fetch verification was exercised live** in this section (`source_url=''` throughout) — the optional public-source independent-fetch path (for when an issuer cites a public record) is Direct Mode evidence only (`test_tampered_evidence_source_fails_independent_check`, `test_source_fetch_failure_invalidates_attestation`).
 
 ## E. Security audit remediation — fail-closed invariants, consensus binding, evidence binding (current contract)
 
