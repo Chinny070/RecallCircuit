@@ -67,6 +67,7 @@ class Assessment:
     generation: u32
     appealed: bool
     pending: bool
+    clearing_attestation_id: u256  # 0 = not attestation-dependent; see can_release
 
 @allow_storage
 @dataclass
@@ -557,6 +558,7 @@ class RecallCircuit(gl.Contract):
         a.generation = u32(1)
         a.appealed = False
         a.pending = True
+        a.clearing_attestation_id = u256(0)  # an ordinary initial resolve_assessment never depends on an attestation
         return aid
 
     @gl.public.write
@@ -702,9 +704,13 @@ class RecallCircuit(gl.Contract):
         """Find a live, case-matching attestation of the required type, or None.
 
         A missing, invalid, mismatched, stale (wrong generation/revision),
-        revoked, consumed, or source-check-failed attestation all resolve to
-        None here -- resolve_appeal/resolve_remedy treat that identically to
-        'no attestation at all' and preserve the hold.
+        revoked, consumed, source-check-failed, or issuer-no-longer-authorized
+        attestation all resolve to None here -- resolve_appeal/resolve_remedy
+        treat that identically to 'no attestation at all' and preserve the
+        hold. Checking the issuer's *current* authorization (not just whatever
+        it was at submission time) matters before resolution too: an issuer
+        revoked between submitting an attestation and someone calling
+        resolve_appeal/resolve_remedy must not still be able to clear a case.
         """
         found = None
         for aid in range(1, int(self.next_attestation)):
@@ -718,6 +724,7 @@ class RecallCircuit(gl.Contract):
             if int(att.product_revision) != int(a.product_revision): continue
             if str(att.notice_digest) != str(n.source_digest): continue
             if att.source_checked and not att.source_match: continue
+            if not self._is_authorized_issuer(att.issuer): continue
             found = (aid, att)
         return found
 
@@ -782,6 +789,7 @@ class RecallCircuit(gl.Contract):
             if parsed is not None and parsed['outcome'] == NOT_AFFECTED:
                 a.status = u8(NOT_AFFECTED)
                 a.reason = str(parsed['reason'])
+                a.clearing_attestation_id = u256(att_id)
                 att.consumed = True
             else:
                 a.status = u8(parsed['outcome'] if parsed else UNCERTAIN)
@@ -837,6 +845,7 @@ class RecallCircuit(gl.Contract):
             if result is not None and result['outcome'] == NOT_AFFECTED and n.active and not a.pending:
                 a.status = u8(REMEDIATED)
                 a.reason = 'Remedy verified: '+result['reason']
+                a.clearing_attestation_id = u256(att_id)
                 obj.reason = 'Remedy approved'
                 att.consumed = True
             else:
@@ -865,7 +874,8 @@ class RecallCircuit(gl.Contract):
         a = self._assessment(assessment_id)
         return {'id':int(assessment_id),'product_id':int(a.product_id),'notice_id':int(a.notice_id),
                 'status':int(a.status),'pending':bool(a.pending),'appealed':bool(a.appealed),
-                'generation':int(a.generation),'reason':str(a.reason),'evidence_hash':str(a.evidence_hash)}
+                'generation':int(a.generation),'reason':str(a.reason),'evidence_hash':str(a.evidence_hash),
+                'clearing_attestation_id':int(a.clearing_attestation_id)}
 
     @gl.public.view
     def get_appeal(self, appeal_id: u256) -> dict:
@@ -885,7 +895,17 @@ class RecallCircuit(gl.Contract):
 
     @gl.public.view
     def can_release(self, product_id: u256) -> bool:
-        """Fail closed unless every active notice has a current, complete clearance; traverse linked parts."""
+        """Fail closed unless every active notice has a current, complete clearance; traverse linked parts.
+
+        Revocation remains effective after clearance, not just before it: if
+        the clearance came from an attestation (a.clearing_attestation_id !=
+        0), that specific attestation must still be ACTIVE and its issuer
+        must still be an authorized evidence issuer every time this is
+        called -- a later revoke_attestation or revoke_issuer immediately
+        fails the gate closed again, with no re-resolution needed. An
+        ordinary initial resolve_assessment NOT_AFFECTED, which never
+        depended on any attestation, is unaffected by this check.
+        """
         frontier = [int(product_id)]
         visited = []
         while frontier:
@@ -910,7 +930,15 @@ class RecallCircuit(gl.Contract):
                 a = current[1]
                 if a.pending or a.appealed and self._appeal_open(u256(current[0])): return False
                 if int(a.status) not in (NOT_AFFECTED, REMEDIATED) or int(a.product_revision)!=int(p.revision): return False
+                if int(a.clearing_attestation_id) != 0 and not self._clearing_attestation_still_valid(a.clearing_attestation_id):
+                    return False
         return True
+
+    def _clearing_attestation_still_valid(self, attestation_id: u256) -> bool:
+        att = self.attestations.get(attestation_id)
+        if att is None: return False
+        if int(att.status) != ATT_ACTIVE: return False
+        return self._is_authorized_issuer(att.issuer)
 
     def _appeal_open(self, assessment_id: u256) -> bool:
         for rid in range(1,int(self.next_appeal)):

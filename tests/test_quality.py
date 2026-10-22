@@ -15,7 +15,9 @@ def test_independent_consensus_and_fail_closed_wiring_present():
                       'authorize_issuer', 'submit_attestation', 'sender not an authorized evidence issuer',
                       'issuer must be independent of the product owner', 'canonical_commitment',
                       'No valid independent scope-exclusion attestation',
-                      'No valid independent remedy-completion attestation'):
+                      'No valid independent remedy-completion attestation',
+                      'clearing_attestation_id', '_clearing_attestation_still_valid',
+                      '_is_authorized_issuer(att.issuer)'):
         assert fragment in s
 
 

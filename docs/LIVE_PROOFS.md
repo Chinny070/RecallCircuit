@@ -4,7 +4,42 @@ Recorded 2026-10-20/21 against **StudioNet (chain ID 61999, RPC `https://studio.
 
 No step below used a mock, simulator, or fabricated value. Every status, reason string, and vote tally is copied verbatim from a `genlayer write`/`genlayer call`/`genlayer receipt` response. Where a transaction hash was not captured in the terminal output before truncation, that is stated explicitly rather than invented — the corresponding on-chain state read is cited instead as the evidence.
 
-This document covers six deployments: an initial deployment (section A) demonstrating the core adjudication lifecycle with claimant-supplied notice text, a second deployment (section B) after adding real authoritative-source verification, demonstrated against a genuine, currently-live CPSC recall fetched over `gl.nondet.web.render`, a third deployment (section C) after adding an admin-gated authorized-filer allowlist to bound notice-filing DoS/griefing, a standalone `ReleaseGuard` consumer contract (section D) proving the gate is enforceable cross-contract, a fifth deployment (section E) after a security audit identified and fixed several real fail-open gaps in the logic above, and a sixth deployment (section F) after a further audit closed the remaining gap: a claimant could still obtain NOT_AFFECTED/REMEDIATED clearance purely from their own convincing text plus a made-up hash.
+**How to independently verify any transaction hash below:** `genlayer receipt <hash> --stdout --stderr` against StudioNet (`https://studio.genlayer.com/api`, chain 61999) with the `genlayer` CLI, or any RPC client pointed at that endpoint. The GenLayer explorer at `genlayer-explorer.vercel.app` was returning `503 DEPLOYMENT_PAUSED` at multiple points during this project (noted where relevant below) and should not be assumed to be the only way to check these receipts — the RPC endpoint itself is the source of truth and was used directly for every claim in this document.
+
+This document covers seven deployments: an initial deployment (section A) demonstrating the core adjudication lifecycle with claimant-supplied notice text, a second deployment (section B) after adding real authoritative-source verification, demonstrated against a genuine, currently-live CPSC recall fetched over `gl.nondet.web.render`, a third deployment (section C) after adding an admin-gated authorized-filer allowlist to bound notice-filing DoS/griefing, a standalone `ReleaseGuard` consumer contract (section D) proving the gate is enforceable cross-contract, a fifth deployment (section E) after a security audit identified and fixed several real fail-open gaps in the logic above, a sixth deployment (section F) after a further audit closed the evidence-authenticity gap (a claimant could obtain NOT_AFFECTED/REMEDIATED clearance purely from their own convincing text plus a made-up hash), and a seventh deployment (section G) after a follow-up review found that revocation did not stay effective once a clearance had already happened.
+
+## G. Revocation stays effective after clearance, not just before it (current contract)
+
+A follow-up review of section F's attestation mechanism found that revoking an issuer or a specific attestation **after** a clearance had already set NOT_AFFECTED/REMEDIATED had no effect — `can_release` only checked the assessment's status, never re-checking whether the attestation that produced it was still valid. Fixed by:
+
+- `_current_valid_attestation` now also requires the issuer to be **currently** authorized (not just at submission time) — closing the gap where an issuer revoked between submitting an attestation and someone calling `resolve_appeal`/`resolve_remedy` could still clear a case.
+- `Assessment` gained `clearing_attestation_id` (0 = this clearance never depended on any attestation — an ordinary initial `resolve_assessment` NOT_AFFECTED is unaffected by any of this). `resolve_appeal`/`resolve_remedy` record which attestation produced a clearing outcome.
+- `can_release` now re-checks, on every call, that any recorded `clearing_attestation_id` is still `ATT_ACTIVE` **and** its issuer is still authorized (`_clearing_attestation_still_valid`) — a later `revoke_attestation` or `revoke_issuer` fails the gate closed again immediately, with no re-resolution needed.
+
+```
+Contract Address:  0xBB94AeC77B2de782F0cceB98da157b63A9C7F4b1 (RecallCircuit)
+Deploy Tx Hash:     0x80960f8607b3788ea0b4f59b3a3f3e6dfdb23745479ce98f45c052494963a9c8
+Status:            FINALIZED, 6/6 execution SUCCESS
+ReleaseGuard:      0xF981970C5991CAf6a0BC4d11FdbC693bbE06E757, registry = the address above
+ReleaseGuard Tx:    0x9e2f2e52378c195fa1b304e6f4009040a71039feaa12f27215f4ad48dcd7453d
+Source hash:        sha256(contracts/recall_circuit.py) = c80c2c21deac396431adb01e9bb5457069045e8d2f2f3b9b59d5aac1816b3b57
+```
+
+### G1. Attestation revocation after clearance
+
+Registered a product matching the real CPSC recall (serial `SERIAL-AUDIT4`), filed/verified notice 1 against the real CPSC URL, resolved its assessment to AFFECTED. Owner called `request_remedy(1, ...)`; admin called `authorize_issuer(0xc95df8a18ccae83b6bc5f6e234b8c7859591bfee)` — the same test wallet used in section F, with the same honesty caveat applying. The issuer submitted a remedy attestation (tx `0xa7d63a7fddc89f28e3ff718c0c59d5811043b4779593b79570250abcdc86326c`); `resolve_remedy(1)` (tx `0x2cfaa5839c82b32d3e91c531a2b4b17a44608b07e82448e08c4dbc736033789e`) cleared it:
+```json
+{"status":5,"clearing_attestation_id":1,"reason":"Remedy verified: ... confirming that this specific unit (SERIAL-AUDIT4) has received the required replacement battery pack remedy."}
+```
+`can_release(1)` read `true`. The issuer then called `revoke_attestation(1)` (tx `0x96fb238fb82ac860e7570e008851b7ed7881e49ab1a6581da82ffe8674d2f1ba`). **Without any further write to the assessment itself**, `can_release(1)` immediately read back `false`.
+
+### G2. Issuer revocation after clearance
+
+On a second product (serial `SERIAL-AUDIT5`, assessment 2), the same issuer submitted a remedy attestation (tx `0x8fe87571f3ea6fb6679d460817ff7cb2300ba2a5f85dfaebdd474f8693678dc1`) and `resolve_remedy(2)` (tx `0x0cc7a98649437af43e0b285bc4c5beade7f6c3ea694123cc02735f031b778d2d`) cleared it (`clearing_attestation_id: 2`, `can_release(2)` → `true`). The admin then called `revoke_issuer(0xc95df8a18ccae83b6bc5f6e234b8c7859591bfee)` (tx `0xf8f45612fc9ad836d216f8aa53165debff1ab039894f07ae67210d0c5dfc9cfd`) — revoking the issuer's entire registry entry, not any specific attestation. `can_release(2)` immediately read back `false`. Cross-contract `ReleaseGuard.can_release(2)` on the new deployment independently confirmed `false`, as did `ReleaseGuard.can_release(1)` (G1's product, still revoked from the attestation-level revoke).
+
+### G3. Issuer revocation before resolution, and ordinary clearances unaffected
+
+Covered in Direct Mode (`test_issuer_revocation_before_resolution_blocks_clearance`, `test_ordinary_not_affected_assessment_is_unaffected_by_issuer_revocation`) rather than live, to avoid spending further live transactions demonstrating what the live G1/G2 runs already establish structurally: `_current_valid_attestation`'s issuer-authorization check is identical whether it runs before or after the first resolution attempt, and `clearing_attestation_id` staying `0` for a never-attested clearance means `can_release` never calls `_clearing_attestation_still_valid` for it at all.
 
 ## F. Independent evidence attestors — mandatory, case-bound, non-self-attested clearance (current contract)
 
@@ -54,7 +89,7 @@ submit_attestation(2, EVIDENCE_REMEDY_COMPLETED,
 ### What F does not demonstrate
 
 - **Real-world attestor authenticity is unproven.** The "issuer" here is a GenLayer test wallet with no real-world identity binding. The mechanism (registry, case-binding, mandatory gating, consumption) is proven; whether any given on-chain address is really a manufacturer or repair provider is **not**, and cannot be, proven by this contract alone — see the honesty note above.
-- **Adversarial scenarios not reproduced live** (wrong-case attestation, tampered/mismatched public source, duplicate/replay rejection, revoked/stale attestation, leader tampering caught by the validator) are Direct Mode evidence (`tests/direct/test_recallcircuit_direct.py`), not live-chain evidence — StudioNet's current real recall data doesn't let these specific adversarial conditions be constructed safely without risking real state corruption across sessions. All are covered in the 51/51 passing test suite.
+- **Adversarial scenarios not reproduced live** (wrong-case attestation, tampered/mismatched public source, duplicate/replay rejection, revoked/stale-by-generation attestation, leader tampering caught by the validator, issuer revocation before resolution) are Direct Mode evidence (`tests/direct/test_recallcircuit_direct.py`), not live-chain evidence — StudioNet's current real recall data doesn't let these specific adversarial conditions be constructed safely without risking real state corruption across sessions. All are covered in the test suite; run `python -m pytest tests --collect-only -q` for the exact, current, verifiable count rather than trusting any specific number written in prose here.
 - **No source-fetch verification was exercised live** in this section (`source_url=''` throughout) — the optional public-source independent-fetch path (for when an issuer cites a public record) is Direct Mode evidence only (`test_tampered_evidence_source_fails_independent_check`, `test_source_fetch_failure_invalidates_attestation`).
 
 ## E. Security audit remediation — fail-closed invariants, consensus binding, evidence binding (current contract)

@@ -1,17 +1,17 @@
 {
   "project": "RecallCircuit",
   "date": "2026-10-22",
-  "status": "Mandatory independent evidence-attestor requirement for NOT_AFFECTED/REMEDIATED clearance added, redeployed and reproduced live on StudioNet 61999 (0x3b8E072EF980725C30c974438C8a1928080baaf8); see docs/LIVE_PROOFS.md section F and BUILD_STATUS.md",
+  "status": "Revocation-effectiveness fix (post-clearance) applied, redeployed and reproduced live on StudioNet 61999 (0xBB94AeC77B2de782F0cceB98da157b63A9C7F4b1); see docs/LIVE_PROOFS.md section G and BUILD_STATUS.md",
   "files": {
     ".github/workflows/ci.yml": "b89a23b01bf7d1008728395640f00d2cd2ece625524ef485ae58e7a0af8da080",
     ".gitignore": "ff3b7ec9e9d964c17e547d47a03a91f757b5a842440e9f44089ebe0d8bc75c3c",
-    "BUILD_STATUS.md": "f97edf35f48b57a9b2feb600d09432d2801fe8b7479366c46aabe09030c73871",
+    "BUILD_STATUS.md": "7175971a8aafc4ceedde83721da7de1ab958963b70ab31f7df1a7e54f1a82e22",
     "CLAUDE_FINISH_PROMPT.md": "ca3920810a55a9741c98580d21e94d5c6fddef838a43e503125fa161552cc0f5",
-    "contracts/recall_circuit.py": "1b0258a6b42f8242efc02230bb21d639e2316a13ca32d7be181289ead34c0f59",
+    "contracts/recall_circuit.py": "c80c2c21deac396431adb01e9bb5457069045e8d2f2f3b9b59d5aac1816b3b57",
     "contracts/recall_gate.py": "11d877c8c3e06f587b1ca2b74ac5ffa773479fecb8db61094427979c71023463",
-    "docs/DEPLOYMENT.md": "58c33f278fced18165d39dbbca9ac49f8db363107067a82cb3590307e138c39a",
-    "docs/LIVE_PROOFS.md": "bda5d230b9577f6630ab86cb88997eedaa99240b966c2404c54f2cb341f89dfd",
-    "docs/STATE_MACHINE.md": "74bd967df32a6c2512ab8fa325ad1e981766fcef7241d102a1c548ce83bb3fee",
+    "docs/DEPLOYMENT.md": "f957b5aee21d8809dc4cbd76eb3306aba55c528c621312057d9e4e1748ebd8a1",
+    "docs/LIVE_PROOFS.md": "a442950143fbb53d032f03e5da4a043318e2df1843c2114ab2faa502391e2417",
+    "docs/STATE_MACHINE.md": "2b138d83b23bcef0dab092297850f64838de2352517e1f5732b4a1337318066b",
     "docs/THREAT_MODEL.md": "b6ade099947c1b630b8d7a03e9ca55c73978540e5cc74d88ecc5201a61026aca",
     "frontend/.env.example": "aa9b6f97abaa79af271487f74f29a8ee575a811565460217e053c6d3a44ed135",
     "frontend/index.html": "eb351d5abefad07928333437ca20e9a1176b8a370f1c7f9d9942b6d7f98f092e",
@@ -24,8 +24,8 @@
     "README.md": "e7f98aceda1a07264c1fba8fa95565fe91298ee86ce5ad40d37f6d2e1e0dcefc",
     "requirements-dev.txt": "02b75b1dd4b8611cb9b80c254b74a79ee782c5e2b8f3478a63ef2c9ac4164dbe",
     "scripts/check_rpc.py": "0239de53f5a20856c1925820330496f9289ffb088dc01d4b55e07fa34f366435",
-    "tests/direct/test_recallcircuit_direct.py": "cf6e68e31d67f95782bf72c303caafde7e6f74f14c87246de3bbadc9ef6afd53",
+    "tests/direct/test_recallcircuit_direct.py": "79e67904d57c9395875f7d78703b409be18daf3a11e956e1598d3b1e87bd4f28",
     "tests/test_contract_static.py": "56fc3a244abc09210bea3196c9fb7b4887f571d4e17de01fd72141f6dfcbdede",
-    "tests/test_quality.py": "b7ca793780a0cb50a610f2ced056bff02412e94e2520f9a85fb0e427872990c8"
+    "tests/test_quality.py": "953bcc85f70609a58433ab8e15048f54da9d5fe26acb6edc4ae5f2abd4aabad8"
   }
 }

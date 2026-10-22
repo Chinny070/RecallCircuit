@@ -635,3 +635,104 @@ def test_release_blocked_throughout_unresolved_attested_case(direct_vm, direct_d
     direct_vm.sender = direct_bob
     contract.resolve_remedy(remedy_id)
     assert contract.can_release(pid) is True  # only now: attestation + validator agreement
+
+
+# --- revocation stays effective both before and after resolution -----------
+
+def test_issuer_revocation_before_resolution_blocks_clearance(direct_vm, direct_deploy, direct_bob, direct_charlie, direct_owner):
+    """If the issuer is revoked after submitting an attestation but before
+    anyone calls resolve_remedy, _current_valid_attestation must re-check
+    CURRENT authorization, not whatever was true at submission time."""
+    contract, pid, nid, aid = setup(direct_vm, direct_deploy, direct_bob)
+    contract.resolve_assessment(aid)
+    direct_vm.sender = direct_bob
+    remedy_id = contract.request_remedy(aid, f'Unit {SERIAL} repaired.', 'h')
+
+    as_admin_authorize_issuer(contract, direct_vm, direct_owner, direct_charlie)
+    submit_attestation(contract, direct_vm, direct_charlie, aid, EVIDENCE_REMEDY_COMPLETED,
+                        f'Repair provider confirms unit {SERIAL} replacement completed.')
+
+    direct_vm.sender = direct_owner
+    contract.revoke_issuer(direct_charlie)
+    assert contract.is_authorized_issuer(direct_charlie) is False
+
+    direct_vm.clear_mocks()
+    mock_happy_source(direct_vm)
+    direct_vm.mock_llm(SCOPE_PATTERN, NOT_AFFECTED)
+    direct_vm.sender = direct_bob
+    contract.resolve_remedy(remedy_id)
+    assert contract.get_assessment(aid)['status'] == 3  # UNCERTAIN, not REMEDIATED
+    assert contract.can_release(pid) is False
+
+
+def test_attestation_revocation_after_clearance_fails_the_gate_closed_again(
+        direct_vm, direct_deploy, direct_bob, direct_charlie, direct_owner):
+    """Revocation must remain effective AFTER a clearance already happened:
+    can_release re-checks the clearing attestation on every call, not just
+    once at resolution time."""
+    contract, pid, nid, aid = setup(direct_vm, direct_deploy, direct_bob)
+    contract.resolve_assessment(aid)
+    direct_vm.sender = direct_bob
+    remedy_id = contract.request_remedy(aid, f'Unit {SERIAL} repaired.', 'h')
+    as_admin_authorize_issuer(contract, direct_vm, direct_owner, direct_charlie)
+    att_id = submit_attestation(contract, direct_vm, direct_charlie, aid, EVIDENCE_REMEDY_COMPLETED,
+                                 f'Repair provider confirms unit {SERIAL} replacement completed.')
+
+    direct_vm.clear_mocks()
+    mock_happy_source(direct_vm)
+    direct_vm.mock_llm(SCOPE_PATTERN, NOT_AFFECTED)
+    direct_vm.sender = direct_bob
+    contract.resolve_remedy(remedy_id)
+    assert contract.get_assessment(aid)['status'] == 5  # REMEDIATED
+    assert contract.get_assessment(aid)['clearing_attestation_id'] == att_id
+    assert contract.can_release(pid) is True
+
+    direct_vm.sender = direct_charlie  # the issuer may revoke their own attestation
+    contract.revoke_attestation(att_id)
+    assert contract.can_release(pid) is False  # fails closed immediately, with no re-resolution
+
+
+def test_issuer_revocation_after_clearance_fails_the_gate_closed_again(
+        direct_vm, direct_deploy, direct_bob, direct_charlie, direct_owner):
+    """Same as above, but the admin revokes the issuer's whole registry
+    entry rather than one specific attestation."""
+    contract, pid, nid, aid = setup(direct_vm, direct_deploy, direct_bob)
+    contract.resolve_assessment(aid)
+    direct_vm.sender = direct_bob
+    remedy_id = contract.request_remedy(aid, f'Unit {SERIAL} repaired.', 'h')
+    as_admin_authorize_issuer(contract, direct_vm, direct_owner, direct_charlie)
+    submit_attestation(contract, direct_vm, direct_charlie, aid, EVIDENCE_REMEDY_COMPLETED,
+                        f'Repair provider confirms unit {SERIAL} replacement completed.')
+
+    direct_vm.clear_mocks()
+    mock_happy_source(direct_vm)
+    direct_vm.mock_llm(SCOPE_PATTERN, NOT_AFFECTED)
+    direct_vm.sender = direct_bob
+    contract.resolve_remedy(remedy_id)
+    assert contract.can_release(pid) is True
+
+    direct_vm.sender = direct_owner
+    contract.revoke_issuer(direct_charlie)
+    assert contract.can_release(pid) is False  # the issuer's disauthorization alone is enough
+
+
+def test_ordinary_not_affected_assessment_is_unaffected_by_issuer_revocation(
+        direct_vm, direct_deploy, direct_bob, direct_charlie, direct_owner):
+    """An initial resolve_assessment NOT_AFFECTED never depended on any
+    attestation (clearing_attestation_id stays 0) and must keep clearing the
+    gate even after an unrelated issuer is revoked elsewhere."""
+    mock_happy_source(direct_vm)
+    direct_vm.mock_llm(SCOPE_PATTERN, NOT_AFFECTED)
+    contract = deploy_and_authorize(direct_deploy, direct_vm, direct_bob)
+    pid = contract.register_product('Example Co', 'BAT-2', 'B9', 'SERIAL-002', '2026-02', 'hash-2')
+    nid = file_and_verify(contract, direct_vm)
+    aid = contract.open_assessment(pid, nid)
+    contract.resolve_assessment(aid)
+    assert contract.get_assessment(aid)['status'] == 2  # NOT_AFFECTED
+    assert contract.get_assessment(aid)['clearing_attestation_id'] == 0
+    assert contract.can_release(pid) is True
+
+    as_admin_authorize_issuer(contract, direct_vm, direct_owner, direct_charlie)
+    direct_vm.sender = direct_owner
+    contract.revoke_issuer(direct_charlie)  # unrelated to this assessment entirely
+    assert contract.can_release(pid) is True  # still cleared; never depended on any attestation
